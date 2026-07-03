@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --remax-red: #dc1c2e;
+    --remax-blue: #003da5;
+    --remax-blue-dark: #002b75;
+    --surface: #f8fafc;
+  }
+
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-brand-surface text-slate-800;
+  }
+
+  * {
+    @apply border-slate-200;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-remax-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-remax-red-dark focus:outline-none focus:ring-2 focus:ring-remax-red/30;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-remax-blue-dark transition-colors hover:border-remax-blue/30 hover:bg-remax-blue-light focus:outline-none focus:ring-2 focus:ring-remax-blue/20;
+  }
+
+  .card {
+    @apply rounded-xl border border-slate-200/80 bg-white shadow-card;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-red {
+    @apply badge bg-remax-red-light text-remax-red;
+  }
+
+  .badge-blue {
+    @apply badge bg-remax-blue-light text-remax-blue;
+  }
+
+  .badge-green {
+    @apply badge bg-emerald-50 text-emerald-700;
+  }
+
+  .badge-amber {
+    @apply badge bg-amber-50 text-amber-700;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 45, 98, 0.2) transparent;
+  }
+}
