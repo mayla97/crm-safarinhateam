@@ -370,14 +370,32 @@ const etapaArrendamentoImportada =
       console.log("A importar lead:", obj);
         await addLead({
           ...({
-            data_entrada: obj["data de entrada"] || obj.data_entrada || obj.data || null,
+            data_entrada: (() => {
+              const d = obj["data de entrada"] || obj.data_entrada || obj.data || "";
+              if (!d) return null;
+              // Converte DD/MM/AAAA para AAAA-MM-DD
+              const partes = d.split("/");
+              if (partes.length === 3) {
+                return `${partes[2]}-${partes[1]}-${partes[0]}`;
+              }
+              return d || null;
+            })(),
           } as any),
          nome: obj.nome ? obj.nome : partesNome[0] || "Sem nome",
           apelido: obj.apelido || partesNome.slice(1).join(" ") || null,
           email: obj.email || null,
           telemovel: obj.telemóvel || obj.telemovel || obj.telefone || null,
           ...({
-            data_entrada: obj["data de entrada"] || obj.data_entrada || obj.data || null,
+            data_entrada: (() => {
+              const d = obj["data de entrada"] || obj.data_entrada || obj.data || "";
+              if (!d) return null;
+              // Converte DD/MM/AAAA para AAAA-MM-DD
+              const partes = d.split("/");
+              if (partes.length === 3) {
+                return `${partes[2]}-${partes[1]}-${partes[0]}`;
+              }
+              return d || null;
+            })(),
             tipo_processo: tipoProcessoImportado,
             etapa: etapaVendaImportada,
             etapa_arrendamento: etapaArrendamentoImportada,
