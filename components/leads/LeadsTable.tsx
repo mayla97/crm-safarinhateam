@@ -16,6 +16,8 @@ import {
   TEMPERATURAS,
 } from "@/lib/leads";
 import type { LeadTemperatura } from "@/types";
+import { Trash2 } from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
 const ETAPAS_ARRENDAMENTO: Record<string, string> = {
   novo_lead: "Novo lead",
   em_tratamento: "Em tratamento",
@@ -105,7 +107,35 @@ export function LeadsTable() {
 const [semContactoFiltro, setSemContactoFiltro] = useState(
   searchParams.get("filtro") === "sem_contacto"
 );
+const [seleccionados, setSeleccionados] = useState<string[]>([]);
+const [apagando, setApagando] = useState(false);
 
+const toggleSeleccionar = (id: string) => {
+  setSeleccionados((prev) =>
+    prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+  );
+};
+
+const toggleTodos = () => {
+  if (seleccionados.length === leadsFiltrados.length) {
+    setSeleccionados([]);
+  } else {
+    setSeleccionados(leadsFiltrados.map((l) => l.id));
+  }
+};
+
+const apagarSeleccionados = async () => {
+  if (!confirm(`Tens a certeza que queres apagar ${seleccionados.length} lead(s)? Esta acção não pode ser desfeita.`)) return;
+  setApagando(true);
+  for (const id of seleccionados) {
+    await supabase.from("lead_historico").delete().eq("lead_id", id);
+    await supabase.from("tarefas").delete().eq("lead_id", id);
+    await supabase.from("leads").delete().eq("id", id);
+  }
+  setSeleccionados([]);
+  await refreshLeads();
+  setApagando(false);
+};
   const leadsFiltrados = useMemo(() => {
     return leads.filter((lead) => {
       const nome = getLeadDisplayName(lead).toLowerCase();
@@ -424,7 +454,21 @@ const etapaArrendamentoImportada =
           <Filter className="h-4 w-4" />
           Filtrar
         </button>
-
+        {seleccionados.length > 0 && (
+  <button
+    type="button"
+    onClick={apagarSeleccionados}
+    disabled={apagando}
+    className="btn-secondary text-red-600 border-red-200 hover:bg-red-50"
+  >
+    {apagando ? (
+      <Loader2 className="h-4 w-4 animate-spin" />
+    ) : (
+      <Trash2 className="h-4 w-4" />
+    )}
+    Apagar {seleccionados.length} seleccionado(s)
+  </button>
+)}
         <NovoLeadButton />
       </PageHeader>
 
@@ -585,6 +629,14 @@ const etapaArrendamentoImportada =
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">Origem</th>
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">Etapa</th>
                   <th className="px-6 py-3 text-right font-semibold text-remax-blue-dark">Ações</th>
+                  <th className="px-4 py-3">
+  <input
+    type="checkbox"
+    checked={seleccionados.length === leadsFiltrados.length && leadsFiltrados.length > 0}
+    onChange={toggleTodos}
+    className="rounded border-slate-300"
+  />
+</th>
                 </tr>
               </thead>
 
@@ -595,36 +647,40 @@ const etapaArrendamentoImportada =
 
                   return (
                     <tr key={lead.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="px-6 py-4 font-medium text-slate-800">
-                        <Link href={href} className="hover:text-remax-blue">
-                          {getLeadDisplayName(lead)}
-                        </Link>
-                      </td>
-
-                      <td className="px-6 py-4 text-brand-muted">
-                        <div>{lead.email ?? "—"}</div>
-                        <div className="text-xs">{lead.telemovel ?? "—"}</div>
-                      </td>
-
-                      <td className="px-6 py-4 text-brand-muted">{lead.tipologia ?? "—"}</td>
-                      <td className="px-6 py-4 text-brand-muted">{lead.zona_interesse ?? "—"}</td>
-                      <td className="px-6 py-4 text-brand-muted">{lead.origem ?? "—"}</td>
-
-                      <td className="px-6 py-4">
-                        <span className={ETAPA_BADGE[etapaLabel] ?? "badge-blue"}>
-                          {etapaLabel}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4 text-right">
-                        <Link
-                          href={href}
-                          className="inline-flex text-sm font-medium text-remax-blue hover:text-remax-red transition-colors"
-                        >
-                          Ver detalhe
-                        </Link>
-                      </td>
-                    </tr>
+  <td className="px-4 py-4">
+    <input
+      type="checkbox"
+      checked={seleccionados.includes(lead.id)}
+      onChange={() => toggleSeleccionar(lead.id)}
+      className="rounded border-slate-300"
+    />
+  </td>
+  <td className="px-6 py-4 font-medium text-slate-800">
+    <Link href={href} className="hover:text-remax-blue">
+      {getLeadDisplayName(lead)}
+    </Link>
+  </td>
+  <td className="px-6 py-4 text-brand-muted">
+    <div>{lead.email ?? "—"}</div>
+    <div className="text-xs">{lead.telemovel ?? "—"}</div>
+  </td>
+  <td className="px-6 py-4 text-brand-muted">{lead.tipologia ?? "—"}</td>
+  <td className="px-6 py-4 text-brand-muted">{lead.zona_interesse ?? "—"}</td>
+  <td className="px-6 py-4 text-brand-muted">{lead.origem ?? "—"}</td>
+  <td className="px-6 py-4">
+    <span className={ETAPA_BADGE[etapaLabel] ?? "badge-blue"}>
+      {etapaLabel}
+    </span>
+  </td>
+  <td className="px-6 py-4 text-right">
+    <Link
+      href={href}
+      className="inline-flex text-sm font-medium text-remax-blue hover:text-remax-red transition-colors"
+    >
+      Ver detalhe
+    </Link>
+  </td>
+</tr>
                   );
                 })}
               </tbody>
