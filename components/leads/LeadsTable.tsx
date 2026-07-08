@@ -86,7 +86,32 @@ function mapEtapaArrendamento(valor: string) {
 
   return mapa[etapa] ?? "novo_lead";
 }
+function parseCSVLine(linha: string, sep: string): string[] {
+  const resultado: string[] = [];
+  let atual = "";
+  let dentroAspas = false;
 
+  for (let i = 0; i < linha.length; i++) {
+    const char = linha[i];
+
+    if (char === '"') {
+      if (dentroAspas && linha[i + 1] === '"') {
+        atual += '"';
+        i++;
+      } else {
+        dentroAspas = !dentroAspas;
+      }
+    } else if (char === sep && !dentroAspas) {
+      resultado.push(atual.trim());
+      atual = "";
+    } else {
+      atual += char;
+    }
+  }
+
+  resultado.push(atual.trim());
+  return resultado;
+}
 export function LeadsTable() {
   const { leads, loading, error, refreshLeads, addLead } = useLeads();
 
@@ -308,118 +333,83 @@ console.log(text);
         .split(separador)
         .map((h) => h.trim().replaceAll('"', "").toLowerCase());
 
-      for (const linha of linhas.slice(1)) {
-        const valores = linha
-          .split(separador)
-          .map((v) => v.trim().replace(/^"|"$/g, ""));
-
-        const obj: Record<string, string> = {};
-
-        headers.forEach((header, index) => {
-          obj[header] = valores[index] ?? "";
-        });
-
-        const nomeCompleto = obj.nome || obj["nome completo"] || "";
-        const partesNome = nomeCompleto.trim().split(" ");
-        const telemovelImportado =
-        obj.telemóvel || obj.telemovel || obj.telefone || "";
-      
-      const emailImportado = obj.email || "";
-      const tipoProcessoImportado =
-  obj["tipo de processo"] || obj.tipo_processo || "Compra/Venda";
-
-const etapaTextoImportada = obj.etapa || "";
-
-const etapaVendaImportada =
-  tipoProcessoImportado === "Arrendamento"
-    ? "novo_lead"
-    : mapEtapaVenda(etapaTextoImportada);
-
-const etapaArrendamentoImportada =
-  tipoProcessoImportado === "Arrendamento"
-    ? mapEtapaArrendamento(etapaTextoImportada)
-    : "novo_lead";
-      
-      const duplicado = leads.find((lead: any) => {
-        const telefoneExistente = (lead.telemovel ?? "")
-          .replace(/\s/g, "")
-          .trim();
-      
-        const telefoneNovo = telemovelImportado
-          .replace(/\s/g, "")
-          .trim();
-      
-        const emailExistente = (lead.email ?? "")
-          .trim()
-          .toLowerCase();
-      
-        const emailNovo = emailImportado
-          .trim()
-          .toLowerCase();
-      
-        return (
-          (telefoneNovo && telefoneExistente === telefoneNovo) ||
-          (emailNovo && emailExistente === emailNovo)
-        );
-      });
-      
-      if (duplicado) {
-        ignorados += 1;
-        continue;
-      }
-      console.log("A importar lead:", obj);
-        await addLead({
-          ...({
-            data_entrada: (() => {
-              const d = obj["data de entrada"] || obj.data_entrada || obj.data || "";
+        for (const linha of linhas.slice(1)) {
+          try {
+            const valores = parseCSVLine(linha, separador);
+        
+            const obj: Record<string, string> = {};
+            headers.forEach((header, index) => {
+              obj[header] = valores[index] ?? "";
+            });
+        
+            const nomeCompleto = obj.nome || obj["nome completo"] || "";
+            const partesNome = nomeCompleto.trim().split(" ");
+            const telemovelImportado = obj.telemóvel || obj.telemovel || obj.telefone || "";
+            const emailImportado = obj.email || "";
+            const tipoProcessoImportado = obj["tipo de processo"] || obj.tipo_processo || "Compra/Venda";
+            const etapaTextoImportada = obj.etapa || "";
+        
+            const etapaVendaImportada = tipoProcessoImportado === "Arrendamento"
+              ? "novo_lead"
+              : mapEtapaVenda(etapaTextoImportada);
+        
+            const etapaArrendamentoImportada = tipoProcessoImportado === "Arrendamento"
+              ? mapEtapaArrendamento(etapaTextoImportada)
+              : "novo_lead";
+        
+            const converterData = (d: string) => {
               if (!d) return null;
-              // Converte DD/MM/AAAA para AAAA-MM-DD
               const partes = d.split("/");
-              if (partes.length === 3) {
-                return `${partes[2]}-${partes[1]}-${partes[0]}`;
-              }
-              return d || null;
-            })(),
-          } as any),
-         nome: obj.nome ? obj.nome : partesNome[0] || "Sem nome",
-          apelido: obj.apelido || partesNome.slice(1).join(" ") || null,
-          email: obj.email || null,
-          telemovel: obj.telemóvel || obj.telemovel || obj.telefone || null,
-          ...({
-            data_entrada: (() => {
-              const d = obj["data de entrada"] || obj.data_entrada || obj.data || "";
-              if (!d) return null;
-              // Converte DD/MM/AAAA para AAAA-MM-DD
-              const partes = d.split("/");
-              if (partes.length === 3) {
-                return `${partes[2]}-${partes[1]}-${partes[0]}`;
-              }
-              return d || null;
-            })(),
-            tipo_processo: tipoProcessoImportado,
-            etapa: etapaVendaImportada,
-            etapa_arrendamento: etapaArrendamentoImportada,
-            estado_final: obj.estado || obj["estado final"] || "Activo",
-          } as any),
-          motivo_perda:
-  obj["motivo de perda"] ||
-  obj["motivo da perda"] ||
-  obj.motivo_perda ||
-  null,
-          
-          tipologia: obj.tipologia || null,
-          zona_interesse: obj.zona || obj["zona de interesse"] || null,
-          origem: obj.origem || "Importação CSV",
-          agente_id: null,
-          temperatura: (obj.temperatura as LeadTemperatura) || null,
-          orcamento_maximo: obj.orçamento
-            ? Number(obj.orçamento.replace(/\s/g, "").replace(",", "."))
-            : null,
-          observacoes: obj.observações || obj.observacoes || null,
-        });
-        console.log("Lead importado com sucesso:", obj);
-        importados += 1;
-      }
+              if (partes.length === 3) return `${partes[2]}-${partes[1]}-${partes[0]}`;
+              return null;
+            };
+        
+            const duplicado = leads.find((lead: any) => {
+              const telefoneExistente = (lead.telemovel ?? "").replace(/\s/g, "").trim();
+              const telefoneNovo = telemovelImportado.replace(/\s/g, "").trim();
+              const emailExistente = (lead.email ?? "").trim().toLowerCase();
+              const emailNovo = emailImportado.trim().toLowerCase();
+              return (
+                (telefoneNovo && telefoneExistente === telefoneNovo) ||
+                (emailNovo && emailExistente === emailNovo)
+              );
+            });
+        
+            if (duplicado) {
+              ignorados += 1;
+              continue;
+            }
+        
+            await addLead({
+              nome: obj.nome ? obj.nome : partesNome[0] || "Sem nome",
+              apelido: obj.apelido || partesNome.slice(1).join(" ") || null,
+              email: obj.email || null,
+              telemovel: obj.telemóvel || obj.telemovel || obj.telefone || null,
+              tipologia: obj.tipologia || null,
+              zona_interesse: obj.zona || obj["zona de interesse"] || null,
+              origem: obj.origem || "Importação CSV",
+              agente_id: null,
+              temperatura: (obj.temperatura as LeadTemperatura) || null,
+              orcamento_maximo: obj["orçamento"] || obj.orcamento
+                ? Number((obj["orçamento"] || obj.orcamento).replace(/\s/g, "").replace(",", "."))
+                : null,
+              observacoes: obj["observações"] || obj.observacoes || null,
+              ...({
+                data_entrada: converterData(obj["data de entrada"] || obj.data_entrada || obj.data || ""),
+                tipo_processo: tipoProcessoImportado,
+                etapa: etapaVendaImportada,
+                etapa_arrendamento: etapaArrendamentoImportada,
+                estado_final: obj.estado || obj["estado final"] || "Activo",
+                motivo_perda: obj["motivo de perda"] || obj["motivo da perda"] || obj.motivo_perda || null,
+              } as any),
+            });
+        
+            importados += 1;
+          } catch (err) {
+            console.error("Erro na linha:", err);
+            ignorados += 1;
+          }
+        }
 
       await refreshLeads();
       alert(
