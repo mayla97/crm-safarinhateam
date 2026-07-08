@@ -318,107 +318,107 @@ const matchSemContacto = !semContactoFiltro ||
   const importarLeads = async (file: File) => {
     setImportando(true);
     let importados = 0;
-let ignorados = 0;
-
+    let ignorados = 0;
+  
     try {
       const text = await file.text();
-      const linhas = text.split(/\r?\n/).filter(Boolean);
-      console.log("Ficheiro lido");
-console.log(text);
-
+      const linhas = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
+  
       if (linhas.length < 2) return;
-
-      const separador = linhas[0].includes(";") ? ";" : ",";
-      const headers = linhas[0]
-        .split(separador)
-        .map((h) => h.trim().replaceAll('"', "").toLowerCase());
-
-        for (const linha of linhas.slice(1)) {
-          try {
-            const valores = parseCSVLine(linha, separador);
-        
-            const obj: Record<string, string> = {};
-            headers.forEach((header, index) => {
-              obj[header] = valores[index] ?? "";
-            });
-        
-            const nomeCompleto = obj.nome || obj["nome completo"] || "";
-            const partesNome = nomeCompleto.trim().split(" ");
-            const telemovelImportado = obj.telemóvel || obj.telemovel || obj.telefone || "";
-            const emailImportado = obj.email || "";
-            const tipoProcessoImportado = obj["tipo de processo"] || obj.tipo_processo || "Compra/Venda";
-            const etapaTextoImportada = obj.etapa || "";
-        
-            const etapaVendaImportada = tipoProcessoImportado === "Arrendamento"
-              ? "novo_lead"
-              : mapEtapaVenda(etapaTextoImportada);
-        
-            const etapaArrendamentoImportada = tipoProcessoImportado === "Arrendamento"
-              ? mapEtapaArrendamento(etapaTextoImportada)
-              : "novo_lead";
-        
-            const converterData = (d: string) => {
-              if (!d) return null;
-              const partes = d.split("/");
-              if (partes.length === 3) return `${partes[2]}-${partes[1]}-${partes[0]}`;
-              return null;
-            };
-        
-            const duplicado = leads.find((lead: any) => {
-              const telefoneExistente = (lead.telemovel ?? "").replace(/\s/g, "").trim();
-              const telefoneNovo = telemovelImportado.replace(/\s/g, "").trim();
-              const emailExistente = (lead.email ?? "").trim().toLowerCase();
-              const emailNovo = emailImportado.trim().toLowerCase();
-              return (
-                (telefoneNovo && telefoneExistente === telefoneNovo) ||
-                (emailNovo && emailExistente === emailNovo)
-              );
-            });
-        
-            if (duplicado) {
-              ignorados += 1;
-              continue;
-            }
-        
-            await addLead({
-              nome: obj.nome ? obj.nome : partesNome[0] || "Sem nome",
-              apelido: obj.apelido || partesNome.slice(1).join(" ") || null,
-              email: obj.email || null,
-              telemovel: obj.telemóvel || obj.telemovel || obj.telefone || null,
-              tipologia: obj.tipologia || null,
-              zona_interesse: obj.zona || obj["zona de interesse"] || null,
-              origem: obj.origem || "Importação CSV",
-              agente_id: null,
-              temperatura: (obj.temperatura as LeadTemperatura) || null,
-              orcamento_maximo: obj["orçamento"] || obj.orcamento
-                ? Number((obj["orçamento"] || obj.orcamento).replace(/\s/g, "").replace(",", "."))
-                : null,
-              observacoes: obj["observações"] || obj.observacoes || null,
-              ...({
-                data_entrada: converterData(obj["data de entrada"] || obj.data_entrada || obj.data || ""),
-                tipo_processo: tipoProcessoImportado,
-                etapa: etapaVendaImportada,
-                etapa_arrendamento: etapaArrendamentoImportada,
-                estado_final: obj.estado || obj["estado final"] || "Activo",
-                motivo_perda: obj["motivo de perda"] || obj["motivo da perda"] || obj.motivo_perda || null,
-              } as any),
-            });
-        
-            importados += 1;
-          } catch (err) {
-            console.error("Erro na linha:", err);
+  
+      const separador = ";";
+      const headers = parseCSVLine(linhas[0], separador).map((h) => h.trim().toLowerCase());
+  
+      for (const linha of linhas.slice(1)) {
+        try {
+          const valores = parseCSVLine(linha, separador);
+          const obj: Record<string, string> = {};
+          headers.forEach((header, index) => {
+            obj[header] = (valores[index] ?? "").trim();
+          });
+  
+          const nome = obj["nome"] || "";
+          const apelido = obj["apelido"] || "";
+          const email = obj["email"] || "";
+          const telemovel = obj["telemóvel"] || obj["telemovel"] || "";
+          const tipoProcesso = obj["tipo de processo"] || "Compra/Venda";
+          const etapaTexto = obj["etapa"] || "";
+          const estado = obj["estado"] || "Activo";
+          const origem = obj["origem"] || "Importação CSV";
+  
+          const converterData = (d: string) => {
+            if (!d) return null;
+            const partes = d.split("/");
+            if (partes.length === 3) return `${partes[2]}-${partes[1].padStart(2,"0")}-${partes[0].padStart(2,"0")}`;
+            return null;
+          };
+  
+          const converterOrcamento = (v: string) => {
+            if (!v) return null;
+            const limpo = v.replace(/€/g, "").replace(/\s/g, "").replace(",", ".");
+            const num = parseFloat(limpo);
+            return isNaN(num) ? null : num;
+          };
+  
+          const etapaVenda = tipoProcesso === "Arrendamento" ? "novo_lead" : mapEtapaVenda(etapaTexto);
+          const etapaArr = tipoProcesso === "Arrendamento" ? mapEtapaArrendamento(etapaTexto) : "novo_lead";
+  
+          if (!nome && !email && !telemovel) {
             ignorados += 1;
+            continue;
           }
+  
+          const duplicado = leads.find((lead: any) => {
+            const telExistente = (lead.telemovel ?? "").replace(/\s/g, "").trim();
+            const telNovo = telemovel.replace(/\s/g, "").trim();
+            const emailExistente = (lead.email ?? "").trim().toLowerCase();
+            const emailNovo = email.trim().toLowerCase();
+            return (
+              (telNovo && telExistente === telNovo) ||
+              (emailNovo && emailExistente === emailNovo)
+            );
+          });
+  
+          if (duplicado) {
+            ignorados += 1;
+            continue;
+          }
+  
+          await addLead({
+            nome: nome || "Sem nome",
+            apelido: apelido || null,
+            email: email || null,
+            telemovel: telemovel || null,
+            tipologia: obj["tipologia"] || null,
+            zona_interesse: obj["zona"] || null,
+            origem,
+            agente_id: null,
+            temperatura: (obj["temperatura"] as LeadTemperatura) || null,
+            orcamento_maximo: converterOrcamento(obj["orçamento"] || obj["orcamento"] || ""),
+            observacoes: obj["observações"] || obj["observacoes"] || null,
+            ...({
+              data_entrada: converterData(obj["data de entrada"] || ""),
+              tipo_processo: tipoProcesso,
+              etapa: etapaVenda,
+              etapa_arrendamento: etapaArr,
+              estado_final: estado,
+              estado_lead: estado,
+              motivo_perda: obj["motivo de perda"] || null,
+            } as any),
+          });
+  
+          importados += 1;
+        } catch (err) {
+          console.error("Erro na linha:", err);
+          ignorados += 1;
         }
-
+      }
+  
       await refreshLeads();
-      alert(
-        `Importação terminada.\n\nImportados: ${importados}\nIgnorados por duplicado: ${ignorados}`
-      );
+      alert(`Importação terminada.\n\nImportados: ${importados}\nIgnorados: ${ignorados}`);
     } finally {
       setImportando(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
-
     }
   };
 
