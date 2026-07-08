@@ -326,14 +326,26 @@ const matchSemContacto = !semContactoFiltro ||
   
       if (linhas.length < 2) return;
   
+      const normalizarHeader = (h: string) => {
+        return h
+          .trim()
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+      };
       const separador = ";";
-      const headers = parseCSVLine(linhas[0], separador).map((h) => h.trim().toLowerCase());
+      
+      const headers = parseCSVLine(linhas[0], separador).map(normalizarHeader);
   
       for (const linha of linhas.slice(1)) {
         try {
           const valores = parseCSVLine(linha, separador);
           const obj: Record<string, string> = {};
           headers.forEach((header, index) => {
+            const valor = valores[index] ?? "";
+          
+            obj[header] = valor.trim();
+          });headers.forEach((header, index) => {
             obj[header] = (valores[index] ?? "").trim();
           });
   
@@ -341,8 +353,9 @@ const matchSemContacto = !semContactoFiltro ||
           const apelido = obj["apelido"] || "";
           const email = obj["email"] || "";
           const telemovel = obj["telemóvel"] || obj["telemovel"] || "";
-          const tipoProcesso = obj["tipo de processo"] || "Compra/Venda";
-          const etapaTexto = obj["etapa"] || "";
+          const tipoProcesso =
+  obj["tipo de processo"] || obj["tipoprocesso"] || "Compra/Venda";
+  const etapaTexto = obj["etapa"] || obj["etapas"] || "";
           const estado = obj["estado"] || "Activo";
           const origem = obj["origem"] || "Importação CSV";
   
@@ -397,7 +410,8 @@ const matchSemContacto = !semContactoFiltro ||
             orcamento_maximo: converterOrcamento(obj["orçamento"] || obj["orcamento"] || ""),
             observacoes: obj["observações"] || obj["observacoes"] || null,
             ...({
-              data_entrada: converterData(obj["data de entrada"] || ""),
+              data_entrada:
+  converterData(obj["data de entrada"] || obj["datadeentrada"] || ""),
               tipo_processo: tipoProcesso,
               etapa: etapaVenda,
               etapa_arrendamento: etapaArr,
