@@ -9,20 +9,35 @@ import { PIPELINE_STAGES } from "@/lib/leads";
 const LEAD_SELECT = `*, agentes ( nome )`;
 
 async function selectLeads() {
-  let result = await supabase
-    .from("leads")
-    .select(LEAD_SELECT)
-    .order("created_at", { ascending: false })
-    .range(0, 9999);
+  let allData: any[] = [];
+  let from = 0;
+  const pageSize = 1000;
 
-  if (result.error?.message?.includes("agentes")) {
-    result = await supabase
+  while (true) {
+    let result = await supabase
       .from("leads")
-      .select("*")
+      .select(LEAD_SELECT)
       .order("created_at", { ascending: false })
-      .range(0, 9999);
+      .range(from, from + pageSize - 1);
+
+    if (result.error?.message?.includes("agentes")) {
+      result = await supabase
+        .from("leads")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .range(from, from + pageSize - 1);
+    }
+
+    if (result.error) throw result.error;
+
+    const rows = result.data ?? [];
+    allData = allData.concat(rows);
+
+    if (rows.length < pageSize) break;
+    from += pageSize;
   }
-  return result;
+
+  return { data: allData, error: null };
 }
 
 async function selectLeadById(id: string) {
