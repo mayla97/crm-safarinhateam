@@ -333,7 +333,7 @@ const matchSemContacto = !semContactoFiltro ||
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "");
       };
-      const separador = ";";
+      const separador = linhas[0].includes("\t") ? "\t" : linhas[0].includes(";") ? ";" : ",";
 
       const headers = parseCSVLine(linhas[0], separador).map(normalizarHeader);
   
