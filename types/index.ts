@@ -37,12 +37,13 @@ export interface Lead {
   observacoes: string | null;
   estado_lead?: string | null;
   motivo_perda?: string | null;
-estado_final?: string | null;
-etapa: LeadEtapa;
-etapa_arrendamento?: string | null;
-tipo_processo?: string | null;
-created_at: string;
-updated_at: string;
+  estado_final?: string | null;
+  etapa: LeadEtapa;
+  etapa_arrendamento?: string | null;
+  tipo_processo?: string | null;
+  data_entrada?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Tarefa {

@@ -65,6 +65,7 @@ tipo_processo:
   ((row as any).tipo_processo as string) ?? "Compra/Venda",
     created_at: row.created_at,
     updated_at: row.updated_at,
+    data_entrada: ((row as any).data_entrada as string) ?? null,
   };
 }
 
