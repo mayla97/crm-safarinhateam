@@ -798,8 +798,8 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
           </div>
 
           <p className="mt-1 text-sm text-brand-muted">
-            Lead criado em {formatDate(lead.created_at)}
-          </p>
+  Lead criado em {formatDate((lead as any).data_entrada ?? lead.created_at)}
+</p>
         </div>
 
         <div className="flex gap-2">
