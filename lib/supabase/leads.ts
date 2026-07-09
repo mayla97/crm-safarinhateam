@@ -50,7 +50,7 @@ async function selectLeadById(id: string) {
 
 export async function fetchLeads(): Promise<Lead[]> {
   const { data, error } = await selectLeads();
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(String(error));
   return (data ?? []).map((row) => mapLeadRow(row as LeadRow));
 }
 
