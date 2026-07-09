@@ -410,7 +410,7 @@ const matchSemContacto = !semContactoFiltro ||
             orcamento_maximo: converterOrcamento(obj["orçamento"] || obj["orcamento"] || ""),
             observacoes: obj["observações"] || obj["observacoes"] || null,
             ...({
-              data_entrada: converterData(obj["lead antigo sem historico"] || obj["data de entrada"] || obj["datadeentrada"] || ""),
+              data_entrada: converterData(obj["data de entrada"] || obj["datadeentrada"] || ""),
               tipo_processo: tipoProcesso,
               etapa: etapaVenda,
               etapa_arrendamento: etapaArr,
