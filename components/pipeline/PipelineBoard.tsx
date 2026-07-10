@@ -142,7 +142,9 @@ export function PipelineBoard() {
   const renderStages = (stages: any[], stageLeads: any[], getEtapa: (l: any) => string, onDrop: (etapa: any, id: string) => void) => (
     <div className="flex min-w-max gap-5">
       {stages.map((stage) => {
-        const stageLds = stageLeads.filter((l) => getEtapa(l) === stage.id);
+        const stageLds = stageLeads
+        .filter((l) => getEtapa(l) === stage.id)
+        .sort((a, b) => new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime());
         const isEmpty = stageLds.length === 0;
         return (
           <div

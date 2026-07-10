@@ -1192,10 +1192,19 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
                     </dd>
                   </div>
                 )}
+
+                {form.estado_lead === "Perdido" && (lead as any).motivo_perda && (
+                  <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                    <dt className="text-xs font-medium text-remax-red">Motivo da perda</dt>
+                    <dd className="mt-1 text-sm text-slate-700">
+                      {(lead as any).motivo_perda}
+                      {(lead as any).nota_perda ? ` — ${(lead as any).nota_perda}` : ""}
+                    </dd>
+                  </div>
+                )}
               </dl>
             )}
           </div>
-
           <div className="card p-6">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="flex items-center gap-2 font-semibold text-remax-blue-dark">
