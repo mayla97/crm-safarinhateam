@@ -81,6 +81,34 @@ function parseCSVLine(linha: string, sep: string): string[] {
   return resultado;
 }
 
+function parseDataFlexivel(valor: unknown): number | null {
+  if (!valor) return null;
+  const texto = String(valor).trim();
+  if (!texto) return null;
+
+  // Formato ISO (YYYY-MM-DD ou timestamp completo) — já vem certo do banco
+  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(texto)) {
+    const t = new Date(texto).getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  // Formato DD/MM/YYYY ou DD-MM-YYYY (texto guardado manualmente/importado)
+  const match = texto.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (match) {
+    const [, dia, mes, ano] = match;
+    const t = new Date(`${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}T00:00:00`).getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  // Último recurso: deixar o motor tentar
+  const fallback = new Date(texto).getTime();
+  return isNaN(fallback) ? null : fallback;
+}
+
+function getEntradaTs(lead: any): number | null {
+  return parseDataFlexivel(lead.data_entrada) ?? parseDataFlexivel(lead.created_at);
+}
+
 export function LeadsTable() {
   const { leads, loading, error, refreshLeads, addLead } = useLeads();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -92,7 +120,7 @@ export function LeadsTable() {
   const [tipologiaFiltro, setTipologiaFiltro] = useState("todos");
   const [temperaturaFiltro, setTemperaturaFiltro] = useState("todos");
   const [zonaFiltro, setZonaFiltro] = useState("todos");
-  const [estadoFiltro, setEstadoFiltro] = useState("activos");
+  const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [mostrarFiltros, setMostrarFiltros] = useState(true);
   const [importando, setImportando] = useState(false);
   const [tipoProcessoFiltro, setTipoProcessoFiltro] = useState("todos");
@@ -131,17 +159,23 @@ export function LeadsTable() {
     const filtrados = leads.filter((lead) => {
       const nome = getLeadDisplayName(lead).toLowerCase();
       const termo = search.toLowerCase();
-      const estado = (lead as any).estado_final ?? (lead as any).estado_lead ?? "Activo";
+      const estadoRaw = (lead as any).estado_final ?? (lead as any).estado_lead ?? "Activo";
+      const estado = String(estadoRaw).trim();
+      const estadoNorm = estado.toLowerCase();
       const tipoProcesso = (lead as any).tipo_processo ?? "Compra/Venda";
       const etapaAtual = (lead as any).tipo_processo === "Arrendamento" ? (lead as any).etapa_arrendamento : lead.etapa;
       const setesDiasAtras = new Date();
       setesDiasAtras.setDate(setesDiasAtras.getDate() - 7);
 
-      const dataLeadRaw = (lead as any).data_entrada ?? lead.created_at;
-      const dataLeadTs = dataLeadRaw ? new Date(dataLeadRaw).getTime() : null;
+      const dataLeadTs = getEntradaTs(lead);
       const dentroDoIntervalo =
         (!dataDeTs || (dataLeadTs !== null && dataLeadTs >= dataDeTs)) &&
         (!dataAteTs || (dataLeadTs !== null && dataLeadTs <= dataAteTs));
+
+      const passaEstado =
+        estadoFiltro === "todos" ||
+        (estadoFiltro === "activos" && estadoNorm !== "perdido" && estadoNorm !== "concluído" && estadoNorm !== "concluido") ||
+        estadoNorm === estadoFiltro.toLowerCase();
 
       return (
         (nome.includes(termo) || (lead.email ?? "").toLowerCase().includes(termo) || (lead.telemovel ?? "").includes(search) || (lead.zona_interesse ?? "").toLowerCase().includes(termo)) &&
@@ -151,15 +185,15 @@ export function LeadsTable() {
         (zonaFiltro === "todos" || lead.zona_interesse === zonaFiltro) &&
         (tipologiaFiltro === "todos" || lead.tipologia === tipologiaFiltro) &&
         (temperaturaFiltro === "todos" || lead.temperatura === temperaturaFiltro) &&
-        (estadoFiltro === "todos" || (estadoFiltro === "activos" && estado === "Activo") || estado === estadoFiltro) &&
-        (!semContactoFiltro || (new Date((lead as any).updated_at) < setesDiasAtras && ((lead as any).estado_final ?? (lead as any).estado_lead ?? "Activo") === "Activo")) &&
+        passaEstado &&
+        (!semContactoFiltro || (new Date((lead as any).updated_at) < setesDiasAtras && estadoNorm === "activo")) &&
         dentroDoIntervalo
       );
     });
 
     return [...filtrados].sort((a, b) => {
-      const dataA = new Date((a as any).data_entrada ?? a.created_at).getTime();
-      const dataB = new Date((b as any).data_entrada ?? b.created_at).getTime();
+      const dataA = getEntradaTs(a) ?? 0;
+      const dataB = getEntradaTs(b) ?? 0;
       return dataB - dataA; // mais recentes primeiro
     });
   }, [leads, search, etapaFiltro, origemFiltro, zonaFiltro, tipologiaFiltro, temperaturaFiltro, estadoFiltro, tipoProcessoFiltro, semContactoFiltro, dataDeFiltro, dataAteFiltro]);
@@ -168,7 +202,7 @@ export function LeadsTable() {
 
   const limparFiltros = () => {
     setSearch(""); setEtapaFiltro("todos"); setOrigemFiltro("todos"); setZonaFiltro("todos");
-    setTipologiaFiltro("todos"); setTemperaturaFiltro("todos"); setEstadoFiltro("activos");
+    setTipologiaFiltro("todos"); setTemperaturaFiltro("todos"); setEstadoFiltro("todos");
     setTipoProcessoFiltro("todos"); setSemContactoFiltro(false);
     setDataDeFiltro(""); setDataAteFiltro("");
   };
@@ -346,8 +380,8 @@ export function LeadsTable() {
               {TEMPERATURAS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
             <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
-              <option value="activos">Só activos</option>
               <option value="todos">Todos estados</option>
+              <option value="activos">Só activos</option>
               <option value="Activo">Activo</option>
               <option value="Perdido">Perdido</option>
               <option value="Pausado">Pausado</option>
@@ -421,7 +455,7 @@ export function LeadsTable() {
                   const etapaLabel = getEtapaTabela(lead);
                   const href = `/leads/${lead.id}`;
                   const estado = (lead as any).estado_final ?? (lead as any).estado_lead ?? "Activo";
-                  const dataEntrada = (lead as any).data_entrada ?? lead.created_at;
+                  const dataEntradaTs = getEntradaTs(lead);
 
                   return (
                     <tr key={lead.id} className="hover:bg-slate-50/60 transition-colors">
@@ -429,7 +463,7 @@ export function LeadsTable() {
                         <input type="checkbox" checked={seleccionados.includes(lead.id)} onChange={() => toggleSeleccionar(lead.id)} className="rounded border-slate-300" />
                       </td>
                       <td className="px-6 py-4 text-xs text-brand-muted whitespace-nowrap">
-                        {dataEntrada ? new Date(dataEntrada).toLocaleDateString("pt-PT") : "—"}
+                        {dataEntradaTs ? new Date(dataEntradaTs).toLocaleDateString("pt-PT") : "—"}
                       </td>
                       <td className="px-6 py-4 font-medium text-slate-800">
                         <Link href={href} className="block truncate hover:text-remax-blue" title={getLeadDisplayName(lead)}>
