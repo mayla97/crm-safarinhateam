@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   Loader2, Flame, Snowflake, Thermometer, MapPin, Home, Clock, PauseCircle,
@@ -28,6 +28,30 @@ export function PipelineBoard() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"compra" | "arrendamento">("compra");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isDraggingScroll = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartScrollLeft = useRef(0);
+
+  const handleScrollMouseDown = (e: React.MouseEvent) => {
+    if (!scrollRef.current) return;
+    // não activar drag-scroll se o clique começou num card (que já tem o seu próprio draggable)
+    if ((e.target as HTMLElement).closest("[draggable='true']")) return;
+    isDraggingScroll.current = true;
+    dragStartX.current = e.pageX;
+    dragStartScrollLeft.current = scrollRef.current.scrollLeft;
+  };
+
+  const handleScrollMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingScroll.current || !scrollRef.current) return;
+    e.preventDefault();
+    const delta = e.pageX - dragStartX.current;
+    scrollRef.current.scrollLeft = dragStartScrollLeft.current - delta;
+  };
+
+  const stopScrollDrag = () => {
+    isDraggingScroll.current = false;
+  };
 
 
   const activeLeads = leads.filter((lead: any) => {
@@ -36,6 +60,11 @@ export function PipelineBoard() {
   });
 
   console.log("LEADS ACTIVOS:", activeLeads.map((l: any) => ({ id: l.id, nome: l.nome, tipo_processo: l.tipo_processo })));
+  console.log("DEBUG DATAS (novo_lead):", activeLeads
+    .filter((l: any) => l.etapa === "novo_lead")
+    .slice(0, 10)
+    .map((l: any) => ({ nome: l.nome, updated_at: l.updated_at, created_at: l.created_at }))
+  );
 
   const arrendamentoLeads = activeLeads.filter((l: any) => {
     const tipo = String(l.tipo_processo ?? "").trim().toLowerCase();
@@ -207,7 +236,14 @@ export function PipelineBoard() {
           <Loader2 className="h-5 w-5 animate-spin" /> A carregar pipeline...
         </div>
       ) : (
-        <div className="overflow-x-auto pb-4">
+        <div
+          ref={scrollRef}
+          onMouseDown={handleScrollMouseDown}
+          onMouseMove={handleScrollMouseMove}
+          onMouseUp={stopScrollDrag}
+          onMouseLeave={stopScrollDrag}
+          className="overflow-x-auto pb-4 cursor-grab active:cursor-grabbing select-none"
+        >
           {activeTab === "compra"
             ? renderStages(pipelineStages, compraLeads, (l) => l.etapa, handleDropCompra)
             : renderStages(ARRENDAMENTO_STAGES, arrendamentoLeads, (l) => l.etapa_arrendamento ?? "novo_lead", handleDropArrendamento)
