@@ -99,6 +99,8 @@ export function LeadsTable() {
   const [semContactoFiltro, setSemContactoFiltro] = useState(searchParams.get("filtro") === "sem_contacto");
   const [seleccionados, setSeleccionados] = useState<string[]>([]);
   const [apagando, setApagando] = useState(false);
+  const [dataDeFiltro, setDataDeFiltro] = useState("");
+  const [dataAteFiltro, setDataAteFiltro] = useState("");
 
   const toggleSeleccionar = (id: string) => {
     setSeleccionados((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
@@ -123,6 +125,9 @@ export function LeadsTable() {
   };
 
   const leadsFiltrados = useMemo(() => {
+    const dataDeTs = dataDeFiltro ? new Date(dataDeFiltro + "T00:00:00").getTime() : null;
+    const dataAteTs = dataAteFiltro ? new Date(dataAteFiltro + "T23:59:59").getTime() : null;
+
     const filtrados = leads.filter((lead) => {
       const nome = getLeadDisplayName(lead).toLowerCase();
       const termo = search.toLowerCase();
@@ -131,6 +136,12 @@ export function LeadsTable() {
       const etapaAtual = (lead as any).tipo_processo === "Arrendamento" ? (lead as any).etapa_arrendamento : lead.etapa;
       const setesDiasAtras = new Date();
       setesDiasAtras.setDate(setesDiasAtras.getDate() - 7);
+
+      const dataLeadRaw = (lead as any).data_entrada ?? lead.created_at;
+      const dataLeadTs = dataLeadRaw ? new Date(dataLeadRaw).getTime() : null;
+      const dentroDoIntervalo =
+        (!dataDeTs || (dataLeadTs !== null && dataLeadTs >= dataDeTs)) &&
+        (!dataAteTs || (dataLeadTs !== null && dataLeadTs <= dataAteTs));
 
       return (
         (nome.includes(termo) || (lead.email ?? "").toLowerCase().includes(termo) || (lead.telemovel ?? "").includes(search) || (lead.zona_interesse ?? "").toLowerCase().includes(termo)) &&
@@ -141,7 +152,8 @@ export function LeadsTable() {
         (tipologiaFiltro === "todos" || lead.tipologia === tipologiaFiltro) &&
         (temperaturaFiltro === "todos" || lead.temperatura === temperaturaFiltro) &&
         (estadoFiltro === "todos" || (estadoFiltro === "activos" && estado === "Activo") || estado === estadoFiltro) &&
-        (!semContactoFiltro || (new Date((lead as any).updated_at) < setesDiasAtras && ((lead as any).estado_final ?? (lead as any).estado_lead ?? "Activo") === "Activo"))
+        (!semContactoFiltro || (new Date((lead as any).updated_at) < setesDiasAtras && ((lead as any).estado_final ?? (lead as any).estado_lead ?? "Activo") === "Activo")) &&
+        dentroDoIntervalo
       );
     });
 
@@ -150,7 +162,7 @@ export function LeadsTable() {
       const dataB = new Date((b as any).data_entrada ?? b.created_at).getTime();
       return dataB - dataA; // mais recentes primeiro
     });
-  }, [leads, search, etapaFiltro, origemFiltro, zonaFiltro, tipologiaFiltro, temperaturaFiltro, estadoFiltro, tipoProcessoFiltro, semContactoFiltro]);
+  }, [leads, search, etapaFiltro, origemFiltro, zonaFiltro, tipologiaFiltro, temperaturaFiltro, estadoFiltro, tipoProcessoFiltro, semContactoFiltro, dataDeFiltro, dataAteFiltro]);
 
   const zonasDisponiveis = Array.from(new Set(leads.map((lead: any) => lead.zona_interesse).filter(Boolean))).sort();
 
@@ -158,6 +170,7 @@ export function LeadsTable() {
     setSearch(""); setEtapaFiltro("todos"); setOrigemFiltro("todos"); setZonaFiltro("todos");
     setTipologiaFiltro("todos"); setTemperaturaFiltro("todos"); setEstadoFiltro("activos");
     setTipoProcessoFiltro("todos"); setSemContactoFiltro(false);
+    setDataDeFiltro(""); setDataAteFiltro("");
   };
 
   const exportarLeads = () => {
@@ -340,6 +353,14 @@ export function LeadsTable() {
               <option value="Pausado">Pausado</option>
               <option value="Concluído">Concluído</option>
             </select>
+            <div className="flex flex-col">
+              <label className="mb-1 text-xs font-medium text-brand-muted">Data de entrada — De</label>
+              <input type="date" value={dataDeFiltro} onChange={(e) => setDataDeFiltro(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+            </div>
+            <div className="flex flex-col">
+              <label className="mb-1 text-xs font-medium text-brand-muted">Data de entrada — Até</label>
+              <input type="date" value={dataAteFiltro} onChange={(e) => setDataAteFiltro(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+            </div>
           </div>
           <div className="mt-3 flex items-center justify-between">
             <p className="text-sm text-brand-muted">{leadsFiltrados.length} lead{leadsFiltrados.length === 1 ? "" : "s"} encontrado{leadsFiltrados.length === 1 ? "" : "s"}</p>

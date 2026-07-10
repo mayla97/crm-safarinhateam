@@ -33,12 +33,16 @@ export default function RelatoriosPage() {
   const [temperatura, setTemperatura] = useState("todos");
   const [estado, setEstado] = useState("todos");
   const [agente, setAgente] = useState("todos");
+  const [dataDe, setDataDe] = useState("");
+  const [dataAte, setDataAte] = useState("");
 
   const getEstado = (lead: any) =>
     lead.estado_final ?? lead.estado_lead ?? "Activo";
 
   const getTipoProcesso = (lead: any) =>
     lead.tipo_processo ?? "Compra/Venda";
+
+  const getDataEntrada = (lead: any) => lead.data_entrada ?? lead.created_at;
 
   const getEtapaRelatorio = (lead: any) => {
     if (getTipoProcesso(lead) === "Arrendamento") {
@@ -50,11 +54,21 @@ export default function RelatoriosPage() {
   };
 
   const filtrados = useMemo(() => {
-    return leads.filter((lead: any) => {
+    const dataDeTs = dataDe ? new Date(dataDe + "T00:00:00").getTime() : null;
+    const dataAteTs = dataAte ? new Date(dataAte + "T23:59:59").getTime() : null;
+
+    const resultado = leads.filter((lead: any) => {
       const termo = search.toLowerCase();
       const nome = getLeadDisplayName(lead).toLowerCase();
       const estadoLead = getEstado(lead);
       const tipo = getTipoProcesso(lead);
+
+      const dataLeadRaw = getDataEntrada(lead);
+      const dataLeadTs = dataLeadRaw ? new Date(dataLeadRaw).getTime() : null;
+
+      const dentroDoIntervalo =
+        (!dataDeTs || (dataLeadTs !== null && dataLeadTs >= dataDeTs)) &&
+        (!dataAteTs || (dataLeadTs !== null && dataLeadTs <= dataAteTs));
 
       return (
         (nome.includes(termo) ||
@@ -75,8 +89,15 @@ export default function RelatoriosPage() {
           (estado === "activos" &&
             estadoLead !== "Perdido" &&
             estadoLead !== "Concluído") ||
-          estadoLead === estado)
+          estadoLead === estado) &&
+        dentroDoIntervalo
       );
+    });
+
+    return resultado.sort((a: any, b: any) => {
+      const dataATs = new Date(getDataEntrada(a)).getTime();
+      const dataBTs = new Date(getDataEntrada(b)).getTime();
+      return dataBTs - dataATs; // mais recentes primeiro
     });
   }, [
     leads,
@@ -88,6 +109,8 @@ export default function RelatoriosPage() {
     tipologia,
     temperatura,
     estado,
+    dataDe,
+    dataAte,
   ]);
 
   const concluidos = filtrados.filter(
@@ -199,6 +222,7 @@ export default function RelatoriosPage() {
 
   const exportarCSV = () => {
     const headers = [
+      "Data de entrada",
       "Nome",
       "Email",
       "Telemóvel",
@@ -214,6 +238,9 @@ export default function RelatoriosPage() {
     ];
 
     const rows = filtrados.map((lead: any) => [
+      getDataEntrada(lead)
+        ? new Date(getDataEntrada(lead)).toLocaleDateString("pt-PT")
+        : "",
       getLeadDisplayName(lead),
       lead.email ?? "",
       lead.telemovel ?? "",
@@ -257,6 +284,8 @@ export default function RelatoriosPage() {
     setTipologia("todos");
     setTemperatura("todos");
     setEstado("todos");
+    setDataDe("");
+    setDataAte("");
   };
 
   return (
@@ -462,6 +491,30 @@ export default function RelatoriosPage() {
             <option value="Pausado">Pausado</option>
             <option value="Concluído">Concluído</option>
           </select>
+
+          <div className="flex flex-col">
+            <label className="mb-1 text-xs font-medium text-brand-muted">
+              Data de entrada — De
+            </label>
+            <input
+              type="date"
+              value={dataDe}
+              onChange={(e) => setDataDe(e.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="flex flex-col">
+            <label className="mb-1 text-xs font-medium text-brand-muted">
+              Data de entrada — Até
+            </label>
+            <input
+              type="date"
+              value={dataAte}
+              onChange={(e) => setDataAte(e.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            />
+          </div>
         </div>
 
         <div className="mt-4 flex items-center justify-between">
@@ -533,9 +586,26 @@ export default function RelatoriosPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[1200px] text-sm table-fixed">
+              <colgroup>
+                <col className="w-24" />
+                <col className="w-44" />
+                <col className="w-52" />
+                <col className="w-24" />
+                <col className="w-28" />
+                <col className="w-32" />
+                <col className="w-28" />
+                <col className="w-32" />
+                <col className="w-28" />
+                <col className="w-40" />
+                <col className="w-24" />
+                <col className="w-36" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/80">
+                  <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">
+                    Data
+                  </th>
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">
                     Nome
                   </th>
@@ -575,38 +645,43 @@ export default function RelatoriosPage() {
               <tbody className="divide-y divide-slate-100">
                 {filtrados.map((lead: any) => (
                   <tr key={lead.id}>
-                    <td className="px-6 py-4 font-medium text-slate-800">
+                    <td className="px-6 py-4 text-xs text-brand-muted whitespace-nowrap">
+                      {getDataEntrada(lead)
+                        ? new Date(getDataEntrada(lead)).toLocaleDateString("pt-PT")
+                        : "—"}
+                    </td>
+                    <td className="px-6 py-4 font-medium text-slate-800 truncate" title={getLeadDisplayName(lead)}>
                       {getLeadDisplayName(lead)}
                     </td>
                     <td className="px-6 py-4 text-brand-muted">
-                      <div>{lead.email ?? "—"}</div>
-                      <div className="text-xs">{lead.telemovel ?? "—"}</div>
+                      <div className="truncate" title={lead.email ?? "—"}>{lead.email ?? "—"}</div>
+                      <div className="text-xs truncate">{lead.telemovel ?? "—"}</div>
                     </td>
-                    <td className="px-6 py-4 text-brand-muted">
+                    <td className="px-6 py-4 text-brand-muted truncate">
                       {getTipoProcesso(lead)}
                     </td>
-                    <td className="px-6 py-4 text-brand-muted">
+                    <td className="px-6 py-4 text-brand-muted truncate">
                       {lead.tipologia ?? "—"}
                     </td>
-                    <td className="px-6 py-4 text-brand-muted">
+                    <td className="px-6 py-4 text-brand-muted truncate">
                       {lead.zona_interesse ?? "—"}
                     </td>
-                    <td className="px-6 py-4 text-brand-muted">
+                    <td className="px-6 py-4 text-brand-muted truncate">
                       {lead.origem ?? "—"}
                     </td>
-                    <td className="px-6 py-4 text-brand-muted">
+                    <td className="px-6 py-4 text-brand-muted truncate">
                       {lead.agente_nome ?? "—"}
                     </td>
-                    <td className="px-6 py-4 text-brand-muted">
+                    <td className="px-6 py-4 text-brand-muted truncate">
                       {lead.temperatura ?? "—"}
                     </td>
-                    <td className="px-6 py-4 text-brand-muted">
+                    <td className="px-6 py-4 text-brand-muted truncate">
                       {getEtapaRelatorio(lead)}
                     </td>
-                    <td className="px-6 py-4 text-brand-muted">
+                    <td className="px-6 py-4 text-brand-muted truncate">
                       {getEstado(lead)}
                     </td>
-                    <td className="px-6 py-4 text-brand-muted">
+                    <td className="px-6 py-4 text-brand-muted truncate">
                       {lead.motivo_perda ?? "—"}
                     </td>
                   </tr>
