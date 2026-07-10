@@ -59,12 +59,6 @@ export function PipelineBoard() {
     return estado !== "Perdido" && estado !== "Concluído";
   });
 
-  console.log("LEADS ACTIVOS:", activeLeads.map((l: any) => ({ id: l.id, nome: l.nome, tipo_processo: l.tipo_processo })));
-  console.log("DEBUG DATAS (novo_lead):", activeLeads
-    .filter((l: any) => l.etapa === "novo_lead")
-    .slice(0, 10)
-    .map((l: any) => ({ nome: l.nome, updated_at: l.updated_at, created_at: l.created_at }))
-  );
 
   const arrendamentoLeads = activeLeads.filter((l: any) => {
     const tipo = String(l.tipo_processo ?? "").trim().toLowerCase();
@@ -173,7 +167,11 @@ export function PipelineBoard() {
       {stages.map((stage) => {
         const stageLds = stageLeads
         .filter((l) => getEtapa(l) === stage.id)
-        .sort((a, b) => new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime());
+        .sort((a, b) => {
+          const dataA = a.data_entrada ?? a.created_at ?? 0;
+          const dataB = b.data_entrada ?? b.created_at ?? 0;
+          return new Date(dataB).getTime() - new Date(dataA).getTime();
+        });
         const isEmpty = stageLds.length === 0;
         return (
           <div
