@@ -9,7 +9,12 @@ export async function POST(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email);
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://crm-safarinhateam.vercel.app";
+
+  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${siteUrl}/definir-senha`,
+  });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });

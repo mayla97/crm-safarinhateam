@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith("/login")) {
+  if (pathname.startsWith("/login") || pathname.startsWith("/definir-senha")) {
     return NextResponse.next();
   }
 
@@ -43,5 +43,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|.*\\.png|.*\\.jpg|.*\\.svg|.*\\.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|definir-senha|.*\\.png|.*\\.jpg|.*\\.svg|.*\\.ico).*)"],
 };
