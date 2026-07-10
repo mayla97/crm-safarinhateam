@@ -123,7 +123,7 @@ export function LeadsTable() {
   };
 
   const leadsFiltrados = useMemo(() => {
-    return leads.filter((lead) => {
+    const filtrados = leads.filter((lead) => {
       const nome = getLeadDisplayName(lead).toLowerCase();
       const termo = search.toLowerCase();
       const estado = (lead as any).estado_final ?? (lead as any).estado_lead ?? "Activo";
@@ -143,6 +143,12 @@ export function LeadsTable() {
         (estadoFiltro === "todos" || (estadoFiltro === "activos" && estado === "Activo") || estado === estadoFiltro) &&
         (!semContactoFiltro || (new Date((lead as any).updated_at) < setesDiasAtras && ((lead as any).estado_final ?? (lead as any).estado_lead ?? "Activo") === "Activo"))
       );
+    });
+
+    return [...filtrados].sort((a, b) => {
+      const dataA = new Date((a as any).data_entrada ?? a.created_at).getTime();
+      const dataB = new Date((b as any).data_entrada ?? b.created_at).getTime();
+      return dataB - dataA; // mais recentes primeiro
     });
   }, [leads, search, etapaFiltro, origemFiltro, zonaFiltro, tipologiaFiltro, temperaturaFiltro, estadoFiltro, tipoProcessoFiltro, semContactoFiltro]);
 
