@@ -358,7 +358,20 @@ export function LeadsTable() {
           <div className="py-16 text-center text-brand-muted">Nenhum lead encontrado.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[1100px] text-sm table-fixed">
+              <colgroup>
+                <col className="w-10" />
+                <col className="w-24" />
+                <col className="w-44" />
+                <col className="w-52" />
+                <col className="w-32" />
+                <col className="w-28" />
+                <col className="w-32" />
+                <col className="w-32" />
+                <col className="w-36" />
+                <col className="w-24" />
+                <col className="w-28" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/80">
                   <th className="px-4 py-3">
@@ -392,18 +405,20 @@ export function LeadsTable() {
                         {dataEntrada ? new Date(dataEntrada).toLocaleDateString("pt-PT") : "—"}
                       </td>
                       <td className="px-6 py-4 font-medium text-slate-800">
-                        <Link href={href} className="hover:text-remax-blue">{getLeadDisplayName(lead)}</Link>
+                        <Link href={href} className="block truncate hover:text-remax-blue" title={getLeadDisplayName(lead)}>
+                          {getLeadDisplayName(lead)}
+                        </Link>
                       </td>
                       <td className="px-6 py-4 text-brand-muted">
-                        <div>{lead.email ?? "—"}</div>
-                        <div className="text-xs">{lead.telemovel ?? "—"}</div>
+                        <div className="truncate" title={lead.email ?? "—"}>{lead.email ?? "—"}</div>
+                        <div className="text-xs truncate">{lead.telemovel ?? "—"}</div>
                       </td>
-                      <td className="px-6 py-4 text-brand-muted">{lead.origem ?? "—"}</td>
-                      <td className="px-6 py-4 text-brand-muted">{lead.tipologia ?? "—"}</td>
-                      <td className="px-6 py-4 text-brand-muted">{lead.zona_interesse ?? "—"}</td>
-                      <td className="px-6 py-4 text-brand-muted">{lead.agente_nome ?? "—"}</td>
+                      <td className="px-6 py-4 text-brand-muted truncate" title={lead.origem ?? "—"}>{lead.origem ?? "—"}</td>
+                      <td className="px-6 py-4 text-brand-muted truncate" title={lead.tipologia ?? "—"}>{lead.tipologia ?? "—"}</td>
+                      <td className="px-6 py-4 text-brand-muted truncate" title={lead.zona_interesse ?? "—"}>{lead.zona_interesse ?? "—"}</td>
+                      <td className="px-6 py-4 text-brand-muted truncate" title={lead.agente_nome ?? "—"}>{lead.agente_nome ?? "—"}</td>
                       <td className="px-6 py-4">
-                        <span className={ETAPA_BADGE[etapaLabel] ?? "badge-blue"}>{etapaLabel}</span>
+                        <span className={`inline-block truncate max-w-full ${ETAPA_BADGE[etapaLabel] ?? "badge-blue"}`} title={etapaLabel}>{etapaLabel}</span>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
