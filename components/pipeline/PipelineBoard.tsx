@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   Loader2, Flame, Snowflake, Thermometer, MapPin, Home, Clock, PauseCircle,
@@ -54,13 +54,43 @@ export function PipelineBoard() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"compra" | "arrendamento">("compra");
 
+  // ─── Scroll horizontal por arrasto (clicar e arrastar em qualquer parte
+  // vazia do quadro para ver as outras etapas, sem ter de usar a barra
+  // de scroll no fundo da página) ─────────────────────────────────────────
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isPanningRef = useRef(false);
+  const startXRef = useRef(0);
+  const startScrollRef = useRef(0);
+  const [isPanning, setIsPanning] = useState(false);
+
+  const handlePanMouseDown = (e: React.MouseEvent) => {
+    // Não iniciar o "pan" se o clique for num card de lead (esses têm o
+    // seu próprio drag-and-drop para mudar de etapa) ou num link.
+    const target = e.target as HTMLElement;
+    if (target.closest('[draggable="true"]') || target.closest("a")) return;
+
+    isPanningRef.current = true;
+    setIsPanning(true);
+    startXRef.current = e.pageX;
+    startScrollRef.current = scrollContainerRef.current?.scrollLeft ?? 0;
+  };
+
+  const handlePanMouseMove = (e: React.MouseEvent) => {
+    if (!isPanningRef.current || !scrollContainerRef.current) return;
+    e.preventDefault();
+    const dx = e.pageX - startXRef.current;
+    scrollContainerRef.current.scrollLeft = startScrollRef.current - dx;
+  };
+
+  const stopPanning = () => {
+    isPanningRef.current = false;
+    setIsPanning(false);
+  };
 
   const activeLeads = leads.filter((lead: any) => {
     const estado = lead.estado_final ?? lead.estado_lead ?? "Activo";
     return estado !== "Perdido" && estado !== "Concluído";
   });
-
-  console.log("LEADS ACTIVOS:", activeLeads.map((l: any) => ({ id: l.id, nome: l.nome, tipo_processo: l.tipo_processo })));
 
   const arrendamentoLeads = activeLeads.filter((l: any) => {
     const tipo = String(l.tipo_processo ?? "").trim().toLowerCase();
@@ -232,7 +262,14 @@ export function PipelineBoard() {
           <Loader2 className="h-5 w-5 animate-spin" /> A carregar pipeline...
         </div>
       ) : (
-        <div className="overflow-x-auto pb-4">
+        <div
+          ref={scrollContainerRef}
+          className={`overflow-x-auto pb-4 select-none ${isPanning ? "cursor-grabbing" : "cursor-grab"}`}
+          onMouseDown={handlePanMouseDown}
+          onMouseMove={handlePanMouseMove}
+          onMouseUp={stopPanning}
+          onMouseLeave={stopPanning}
+        >
           {activeTab === "compra"
             ? renderStages(pipelineStages, compraLeads, (l) => l.etapa, handleDropCompra)
             : renderStages(ARRENDAMENTO_STAGES, arrendamentoLeads, (l) => l.etapa_arrendamento ?? "novo_lead", handleDropArrendamento)

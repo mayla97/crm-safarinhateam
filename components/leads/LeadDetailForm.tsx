@@ -1407,15 +1407,6 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
 
             <div className="space-y-2">
               {lead.telemovel && (
-                <a
-                  href={`tel:${lead.telemovel.replace(/\s/g, "")}`}
-                  className="btn-secondary w-full justify-center"
-                >
-                  <Phone className="h-4 w-4" /> Ligar
-                </a>
-              )}
-
-              {lead.telemovel && (
                 <button
                   onClick={() =>
                     lead.telemovel &&
@@ -1438,10 +1429,6 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
                   <Mail className="h-4 w-4" /> Enviar email
                 </button>
               )}
-
-              <Link href="/pipeline" className="btn-primary w-full justify-center">
-                Ver no Pipeline
-              </Link>
             </div>
           </div>
 
