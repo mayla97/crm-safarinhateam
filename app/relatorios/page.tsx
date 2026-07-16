@@ -7,6 +7,7 @@ import { useLeads } from "@/components/leads/LeadsProvider";
 import {
   getLeadDisplayName,
   getEtapaLabel,
+  formatOrcamento,
   ORIGENS,
   TIPOLOGIAS,
   TEMPERATURAS,
@@ -22,6 +23,27 @@ const ETAPAS_ARRENDAMENTO: Record<string, string> = {
   contrato_assinado: "Contrato assinado",
 };
 
+function parseDataFlexivel(valor: unknown): number | null {
+  if (!valor) return null;
+  const texto = String(valor).trim();
+  if (!texto) return null;
+
+  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(texto)) {
+    const t = new Date(texto).getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  const match = texto.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (match) {
+    const [, dia, mes, ano] = match;
+    const t = new Date(`${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}T00:00:00`).getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  const fallback = new Date(texto).getTime();
+  return isNaN(fallback) ? null : fallback;
+}
+
 export default function RelatoriosPage() {
   const { leads } = useLeads();
 
@@ -35,6 +57,8 @@ export default function RelatoriosPage() {
   const [agente, setAgente] = useState("todos");
   const [dataDe, setDataDe] = useState("");
   const [dataAte, setDataAte] = useState("");
+  const [orcamentoMin, setOrcamentoMin] = useState("");
+  const [orcamentoMax, setOrcamentoMax] = useState("");
 
   const getEstado = (lead: any) =>
     lead.estado_final ?? lead.estado_lead ?? "Activo";
@@ -43,6 +67,8 @@ export default function RelatoriosPage() {
     lead.tipo_processo ?? "Compra/Venda";
 
   const getDataEntrada = (lead: any) => lead.data_entrada ?? lead.created_at;
+  const getDataEntradaTs = (lead: any) =>
+    parseDataFlexivel(lead.data_entrada) ?? parseDataFlexivel(lead.created_at);
 
   const getEtapaRelatorio = (lead: any) => {
     if (getTipoProcesso(lead) === "Arrendamento") {
@@ -63,12 +89,20 @@ export default function RelatoriosPage() {
       const estadoLead = getEstado(lead);
       const tipo = getTipoProcesso(lead);
 
-      const dataLeadRaw = getDataEntrada(lead);
-      const dataLeadTs = dataLeadRaw ? new Date(dataLeadRaw).getTime() : null;
+      const dataLeadTs = getDataEntradaTs(lead);
 
       const dentroDoIntervalo =
         (!dataDeTs || (dataLeadTs !== null && dataLeadTs >= dataDeTs)) &&
         (!dataAteTs || (dataLeadTs !== null && dataLeadTs <= dataAteTs));
+
+      const orcamentoLead =
+        lead.orcamento_maximo != null ? Number(lead.orcamento_maximo) : null;
+      const minNum = orcamentoMin ? Number(orcamentoMin) : null;
+      const maxNum = orcamentoMax ? Number(orcamentoMax) : null;
+
+      const dentroDoOrcamento =
+        (!minNum || (orcamentoLead !== null && orcamentoLead >= minNum)) &&
+        (!maxNum || (orcamentoLead !== null && orcamentoLead <= maxNum));
 
       return (
         (nome.includes(termo) ||
@@ -90,13 +124,14 @@ export default function RelatoriosPage() {
             estadoLead !== "Perdido" &&
             estadoLead !== "Concluído") ||
           estadoLead === estado) &&
-        dentroDoIntervalo
+        dentroDoIntervalo &&
+        dentroDoOrcamento
       );
     });
 
     return resultado.sort((a: any, b: any) => {
-      const dataATs = new Date(getDataEntrada(a)).getTime();
-      const dataBTs = new Date(getDataEntrada(b)).getTime();
+      const dataATs = getDataEntradaTs(a) ?? 0;
+      const dataBTs = getDataEntradaTs(b) ?? 0;
       return dataBTs - dataATs; // mais recentes primeiro
     });
   }, [
@@ -109,6 +144,8 @@ export default function RelatoriosPage() {
     tipologia,
     temperatura,
     estado,
+    orcamentoMin,
+    orcamentoMax,
     dataDe,
     dataAte,
   ]);
@@ -229,6 +266,7 @@ export default function RelatoriosPage() {
       "Tipo de processo",
       "Tipologia",
       "Zona",
+      "Orçamento/Renda máximo",
       "Origem",
       "Agente",
       "Temperatura",
@@ -237,23 +275,25 @@ export default function RelatoriosPage() {
       "Motivo da perda",
     ];
 
-    const rows = filtrados.map((lead: any) => [
-      getDataEntrada(lead)
-        ? new Date(getDataEntrada(lead)).toLocaleDateString("pt-PT")
-        : "",
-      getLeadDisplayName(lead),
-      lead.email ?? "",
-      lead.telemovel ?? "",
-      getTipoProcesso(lead),
-      lead.tipologia ?? "",
-      lead.zona_interesse ?? "",
-      lead.origem ?? "",
-      lead.agente_nome ?? "",
-      lead.temperatura ?? "",
-      getEtapaRelatorio(lead),
-      getEstado(lead),
-      lead.motivo_perda ?? "",
-    ]);
+    const rows = filtrados.map((lead: any) => {
+      const ts = getDataEntradaTs(lead);
+      return [
+        ts ? new Date(ts).toLocaleDateString("pt-PT") : "",
+        getLeadDisplayName(lead),
+        lead.email ?? "",
+        lead.telemovel ?? "",
+        getTipoProcesso(lead),
+        lead.tipologia ?? "",
+        lead.zona_interesse ?? "",
+        lead.orcamento_maximo != null ? String(lead.orcamento_maximo) : "",
+        lead.origem ?? "",
+        lead.agente_nome ?? "",
+        lead.temperatura ?? "",
+        getEtapaRelatorio(lead),
+        getEstado(lead),
+        lead.motivo_perda ?? "",
+      ];
+    });
 
     const csv = [headers, ...rows]
       .map((row) =>
@@ -286,6 +326,8 @@ export default function RelatoriosPage() {
     setEstado("todos");
     setDataDe("");
     setDataAte("");
+    setOrcamentoMin("");
+    setOrcamentoMax("");
   };
 
   return (
@@ -515,6 +557,32 @@ export default function RelatoriosPage() {
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
             />
           </div>
+
+          <div className="flex flex-col">
+            <label className="mb-1 text-xs font-medium text-brand-muted">
+              Orçamento — Mínimo
+            </label>
+            <input
+              type="number"
+              placeholder="0"
+              value={orcamentoMin}
+              onChange={(e) => setOrcamentoMin(e.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="flex flex-col">
+            <label className="mb-1 text-xs font-medium text-brand-muted">
+              Orçamento — Máximo
+            </label>
+            <input
+              type="number"
+              placeholder="Sem limite"
+              value={orcamentoMax}
+              onChange={(e) => setOrcamentoMax(e.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            />
+          </div>
         </div>
 
         <div className="mt-4 flex items-center justify-between">
@@ -597,6 +665,7 @@ export default function RelatoriosPage() {
                 <col className="w-28" />
                 <col className="w-32" />
                 <col className="w-28" />
+                <col className="w-28" />
                 <col className="w-40" />
                 <col className="w-24" />
                 <col className="w-36" />
@@ -620,6 +689,9 @@ export default function RelatoriosPage() {
                   </th>
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">
                     Zona
+                  </th>
+                  <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">
+                    Orçamento
                   </th>
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">
                     Origem
@@ -646,8 +718,8 @@ export default function RelatoriosPage() {
                 {filtrados.map((lead: any) => (
                   <tr key={lead.id}>
                     <td className="px-6 py-4 text-xs text-brand-muted whitespace-nowrap">
-                      {getDataEntrada(lead)
-                        ? new Date(getDataEntrada(lead)).toLocaleDateString("pt-PT")
+                      {getDataEntradaTs(lead)
+                        ? new Date(getDataEntradaTs(lead)!).toLocaleDateString("pt-PT")
                         : "—"}
                     </td>
                     <td className="px-6 py-4 font-medium text-slate-800 truncate" title={getLeadDisplayName(lead)}>
@@ -665,6 +737,9 @@ export default function RelatoriosPage() {
                     </td>
                     <td className="px-6 py-4 text-brand-muted truncate">
                       {lead.zona_interesse ?? "—"}
+                    </td>
+                    <td className="px-6 py-4 text-brand-muted truncate">
+                      {formatOrcamento(lead.orcamento_maximo)}
                     </td>
                     <td className="px-6 py-4 text-brand-muted truncate">
                       {lead.origem ?? "—"}
