@@ -1,5 +1,6 @@
 "use client";
 import { abrirEmailOutlook, abrirNoCalendarioOutlook } from "@/lib/outlook";
+import { abrirWhatsApp } from "@/lib/whatsapp";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1412,6 +1413,21 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
                 >
                   <Phone className="h-4 w-4" /> Ligar
                 </a>
+              )}
+
+              {lead.telemovel && (
+                <button
+                  onClick={() =>
+                    lead.telemovel &&
+                    abrirWhatsApp(
+                      lead.telemovel,
+                      `Olá ${lead.nome ?? ""}, `.trim() + " "
+                    )
+                  }
+                  className="btn-secondary w-full justify-center"
+                >
+                  <MessageSquare className="h-4 w-4" /> WhatsApp
+                </button>
               )}
 
               {lead.email && (
