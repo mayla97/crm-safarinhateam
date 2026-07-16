@@ -18,15 +18,57 @@ export default async function PrintRelatorioPage({ searchParams }: PrintRelatori
 
   const supabase = await createClient();
 
-  const { data: leadsData } = await supabase
-  .from("leads")
-  .select("*, agentes(nome)")
-  .order("created_at", { ascending: false });
+  async function fetchTodosLeads() {
+    let allData: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
 
-  const { data: historicoData } = await supabase
-    .from("lead_historico")
-    .select("*")
-    .order("created_at", { ascending: false });
+    while (true) {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("*, agentes(nome)")
+        .order("created_at", { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+
+      const rows = data ?? [];
+      allData = allData.concat(rows);
+
+      if (rows.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return allData;
+  }
+
+  const leadsData = await fetchTodosLeads();
+
+  async function fetchTodoHistorico() {
+    let allData: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+
+    while (true) {
+      const { data, error } = await supabase
+        .from("lead_historico")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+
+      const rows = data ?? [];
+      allData = allData.concat(rows);
+
+      if (rows.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return allData;
+  }
+
+  const historicoData = await fetchTodoHistorico();
 
   // Usa exactamente o mesmo mapper que o resto da app usa (LeadsProvider),
   // para garantir que os campos (orçamento, agente, tipo de processo, etc.)
