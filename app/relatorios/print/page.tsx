@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getEtapaLabel } from "@/lib/leads";
+import { getEtapaLabel, formatOrcamento } from "@/lib/leads";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +125,7 @@ export default async function PrintRelatorioPage() {
             <th className="px-2 py-3 text-left">Contacto</th>
             <th className="px-2 py-3 text-left">Tipologia</th>
             <th className="px-2 py-3 text-left">Zona</th>
+            <th className="px-2 py-3 text-left">Orçamento</th>
             <th className="px-2 py-3 text-left">Origem</th>
             <th className="px-2 py-3 text-left">Agente</th>
             <th className="px-2 py-3 text-left">Temperatura</th>
@@ -152,6 +153,7 @@ export default async function PrintRelatorioPage() {
 
                 <td className="px-2 py-3">{lead.tipologia ?? "—"}</td>
                 <td className="px-2 py-3">{lead.zona_interesse ?? "—"}</td>
+                <td className="px-2 py-3">{formatOrcamento(lead.orcamento_maximo)}</td>
                 <td className="px-2 py-3">{lead.origem ?? "—"}</td>
                 <td className="px-2 py-3">
                 {getAgenteNome(lead)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   Loader2, Flame, Snowflake, Thermometer, MapPin, Home, Clock, PauseCircle,
@@ -23,35 +23,36 @@ const ARRENDAMENTO_STAGES = [
   { id: "contrato_assinado", title: "Contrato assinado", color: "bg-emerald-600" },
 ];
 
+function parseDataFlexivel(valor: unknown): number | null {
+  if (!valor) return null;
+  const texto = String(valor).trim();
+  if (!texto) return null;
+
+  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(texto)) {
+    const t = new Date(texto).getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  const match = texto.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (match) {
+    const [, dia, mes, ano] = match;
+    const t = new Date(`${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}T00:00:00`).getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  const fallback = new Date(texto).getTime();
+  return isNaN(fallback) ? null : fallback;
+}
+
+function getEntradaTs(lead: any): number | null {
+  return parseDataFlexivel(lead.data_entrada) ?? parseDataFlexivel(lead.created_at);
+}
+
 export function PipelineBoard() {
   const { leads, loading, error, updateLeadEtapa, refreshLeads } = useLeads();
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"compra" | "arrendamento">("compra");
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const isDraggingScroll = useRef(false);
-  const dragStartX = useRef(0);
-  const dragStartScrollLeft = useRef(0);
-
-  const handleScrollMouseDown = (e: React.MouseEvent) => {
-    if (!scrollRef.current) return;
-    // não activar drag-scroll se o clique começou num card (que já tem o seu próprio draggable)
-    if ((e.target as HTMLElement).closest("[draggable='true']")) return;
-    isDraggingScroll.current = true;
-    dragStartX.current = e.pageX;
-    dragStartScrollLeft.current = scrollRef.current.scrollLeft;
-  };
-
-  const handleScrollMouseMove = (e: React.MouseEvent) => {
-    if (!isDraggingScroll.current || !scrollRef.current) return;
-    e.preventDefault();
-    const delta = e.pageX - dragStartX.current;
-    scrollRef.current.scrollLeft = dragStartScrollLeft.current - delta;
-  };
-
-  const stopScrollDrag = () => {
-    isDraggingScroll.current = false;
-  };
 
 
   const activeLeads = leads.filter((lead: any) => {
@@ -59,6 +60,7 @@ export function PipelineBoard() {
     return estado !== "Perdido" && estado !== "Concluído";
   });
 
+  console.log("LEADS ACTIVOS:", activeLeads.map((l: any) => ({ id: l.id, nome: l.nome, tipo_processo: l.tipo_processo })));
 
   const arrendamentoLeads = activeLeads.filter((l: any) => {
     const tipo = String(l.tipo_processo ?? "").trim().toLowerCase();
@@ -166,12 +168,8 @@ export function PipelineBoard() {
     <div className="flex min-w-max gap-5">
       {stages.map((stage) => {
         const stageLds = stageLeads
-        .filter((l) => getEtapa(l) === stage.id)
-        .sort((a, b) => {
-          const dataA = a.data_entrada ?? a.created_at ?? 0;
-          const dataB = b.data_entrada ?? b.created_at ?? 0;
-          return new Date(dataB).getTime() - new Date(dataA).getTime();
-        });
+          .filter((l) => getEtapa(l) === stage.id)
+          .sort((a, b) => (getEntradaTs(b) ?? 0) - (getEntradaTs(a) ?? 0)); // mais recentes primeiro
         const isEmpty = stageLds.length === 0;
         return (
           <div
@@ -234,14 +232,7 @@ export function PipelineBoard() {
           <Loader2 className="h-5 w-5 animate-spin" /> A carregar pipeline...
         </div>
       ) : (
-        <div
-          ref={scrollRef}
-          onMouseDown={handleScrollMouseDown}
-          onMouseMove={handleScrollMouseMove}
-          onMouseUp={stopScrollDrag}
-          onMouseLeave={stopScrollDrag}
-          className="overflow-x-auto pb-4 cursor-grab active:cursor-grabbing select-none"
-        >
+        <div className="overflow-x-auto pb-4">
           {activeTab === "compra"
             ? renderStages(pipelineStages, compraLeads, (l) => l.etapa, handleDropCompra)
             : renderStages(ARRENDAMENTO_STAGES, arrendamentoLeads, (l) => l.etapa_arrendamento ?? "novo_lead", handleDropArrendamento)

@@ -18,6 +18,7 @@ import {
   MessageSquare,
   Eye,
   UserCheck,
+  AlertTriangle,
 } from "lucide-react";
 import { fetchLeadById } from "@/lib/supabase/leads";
 import { fetchAgentes } from "@/lib/supabase/agentes";
@@ -218,6 +219,8 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
           data_proxima_acao:
             (leadData as any).data_proxima_acao ?? "",
         });
+
+        setMotivoPerda((leadData as any).motivo_perda ?? "Não informado");
       })
       .catch((err) =>
         setError(err instanceof Error ? err.message : "Erro ao carregar lead")
@@ -419,8 +422,12 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
       }
 
       const refreshed = await fetchLeadById(id);
-      if (refreshed) setLead(refreshed);
-      else setLead(updated);
+      if (refreshed) {
+        setLead(refreshed);
+        setMotivoPerda((refreshed as any).motivo_perda ?? "Não informado");
+      } else {
+        setLead(updated);
+      }
 
       for (const alteracao of alteracoes) {
         await addHistorico(id, "estado", alteracao);
@@ -480,6 +487,7 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
     );
 
     setForm((prev) => ({ ...prev, estado_lead: "Perdido" }));
+    setLead((prev) => (prev ? ({ ...prev, motivo_perda: motivoPerda } as any) : prev));
     setNotaPerda("");
     setShowPerdidoModal(false);
     await reloadHistorico();
@@ -594,6 +602,8 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
       ? ETAPAS_ARRENDAMENTO[(lead as any).etapa_arrendamento ?? "novo_lead"] ??
         "Novo lead"
       : getEtapaLabel(lead.etapa);
+
+  const motivoPerdaAtual = (lead as any).motivo_perda ?? null;
 
   return (
     <div>
@@ -800,6 +810,16 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
           <p className="mt-1 text-sm text-brand-muted">
   Lead criado em {formatDate((lead as any).data_entrada ?? lead.created_at)}
 </p>
+
+          {form.estado_lead === "Perdido" && (
+            <div className="mt-3 inline-flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>
+                <strong>Motivo da perda:</strong>{" "}
+                {motivoPerdaAtual ?? "Não informado"}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2">
@@ -1184,6 +1204,16 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
                   </div>
                 </div>
 
+                {form.estado_lead === "Perdido" && (
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 text-remax-red" />
+                    <div>
+                      <dt className="text-xs font-medium text-brand-muted">Motivo da perda</dt>
+                      <dd className="text-sm text-slate-800">{motivoPerdaAtual ?? "Não informado"}</dd>
+                    </div>
+                  </div>
+                )}
+
                 {lead.observacoes && (
                   <div className="border-t border-slate-100 pt-4 sm:col-span-2">
                     <dt className="text-xs font-medium text-brand-muted">Observações</dt>
@@ -1192,19 +1222,10 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
                     </dd>
                   </div>
                 )}
-
-                {form.estado_lead === "Perdido" && (lead as any).motivo_perda && (
-                  <div className="border-t border-slate-100 pt-4 sm:col-span-2">
-                    <dt className="text-xs font-medium text-remax-red">Motivo da perda</dt>
-                    <dd className="mt-1 text-sm text-slate-700">
-                      {(lead as any).motivo_perda}
-                      {(lead as any).nota_perda ? ` — ${(lead as any).nota_perda}` : ""}
-                    </dd>
-                  </div>
-                )}
               </dl>
             )}
           </div>
+
           <div className="card p-6">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="flex items-center gap-2 font-semibold text-remax-blue-dark">
@@ -1433,6 +1454,16 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
                 </button>
               ))}
             </div>
+
+            {form.estado_lead === "Perdido" && (
+              <button
+                type="button"
+                onClick={() => setShowPerdidoModal(true)}
+                className="mt-3 w-full text-center text-xs font-medium text-remax-blue hover:underline"
+              >
+                Alterar motivo da perda
+              </button>
+            )}
           </div>
         </div>
       </div>
