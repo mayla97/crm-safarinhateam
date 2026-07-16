@@ -3,10 +3,11 @@
 import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, Filter, Loader2, Search, Upload, Trash2 } from "lucide-react";
+import { Download, Filter, Loader2, Search, Upload, Trash2, Mail } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { NovoLeadButton } from "./NovoLeadButton";
 import { useLeads } from "./LeadsProvider";
+import { abrirEmailOutlookMassa } from "@/lib/outlook";
 import {
   getLeadDisplayName,
   getEtapaLabel,
@@ -14,6 +15,7 @@ import {
   ORIGENS,
   TIPOLOGIAS,
   TEMPERATURAS,
+  formatOrcamento,
 } from "@/lib/leads";
 import type { LeadTemperatura } from "@/types";
 import { supabase } from "@/lib/supabase/client";
@@ -129,6 +131,11 @@ export function LeadsTable() {
   const [apagando, setApagando] = useState(false);
   const [dataDeFiltro, setDataDeFiltro] = useState("");
   const [dataAteFiltro, setDataAteFiltro] = useState("");
+  const [orcamentoMinFiltro, setOrcamentoMinFiltro] = useState("");
+  const [orcamentoMaxFiltro, setOrcamentoMaxFiltro] = useState("");
+  const [showEnviarImovelModal, setShowEnviarImovelModal] = useState(false);
+  const [assuntoImovel, setAssuntoImovel] = useState("");
+  const [mensagemImovel, setMensagemImovel] = useState("");
 
   const toggleSeleccionar = (id: string) => {
     setSeleccionados((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
@@ -152,9 +159,25 @@ export function LeadsTable() {
     setApagando(false);
   };
 
+  const leadsSeleccionadosObjetos = leads.filter((l) => seleccionados.includes(l.id));
+  const emailsValidos = leadsSeleccionadosObjetos
+    .map((l) => l.email)
+    .filter((email): email is string => Boolean(email && email.trim()));
+  const semEmailCount = leadsSeleccionadosObjetos.length - emailsValidos.length;
+
+  const dispararEnvioImovel = () => {
+    if (emailsValidos.length === 0) return;
+    abrirEmailOutlookMassa(emailsValidos, assuntoImovel, mensagemImovel);
+    setShowEnviarImovelModal(false);
+    setAssuntoImovel("");
+    setMensagemImovel("");
+  };
+
   const leadsFiltrados = useMemo(() => {
     const dataDeTs = dataDeFiltro ? new Date(dataDeFiltro + "T00:00:00").getTime() : null;
     const dataAteTs = dataAteFiltro ? new Date(dataAteFiltro + "T23:59:59").getTime() : null;
+    const orcamentoMinNum = orcamentoMinFiltro !== "" ? Number(orcamentoMinFiltro) : null;
+    const orcamentoMaxNum = orcamentoMaxFiltro !== "" ? Number(orcamentoMaxFiltro) : null;
 
     const filtrados = leads.filter((lead) => {
       const nome = getLeadDisplayName(lead).toLowerCase();
@@ -172,6 +195,15 @@ export function LeadsTable() {
         (!dataDeTs || (dataLeadTs !== null && dataLeadTs >= dataDeTs)) &&
         (!dataAteTs || (dataLeadTs !== null && dataLeadTs <= dataAteTs));
 
+      const orcamentoLeadRaw = (lead as any).orcamento_maximo;
+      const orcamentoLead =
+        orcamentoLeadRaw !== null && orcamentoLeadRaw !== undefined && orcamentoLeadRaw !== ""
+          ? Number(orcamentoLeadRaw)
+          : null;
+      const dentroDoOrcamento =
+        (orcamentoMinNum === null || (orcamentoLead !== null && !isNaN(orcamentoLead) && orcamentoLead >= orcamentoMinNum)) &&
+        (orcamentoMaxNum === null || (orcamentoLead !== null && !isNaN(orcamentoLead) && orcamentoLead <= orcamentoMaxNum));
+
       const passaEstado =
         estadoFiltro === "todos" ||
         (estadoFiltro === "activos" && estadoNorm !== "perdido" && estadoNorm !== "concluído" && estadoNorm !== "concluido") ||
@@ -187,7 +219,8 @@ export function LeadsTable() {
         (temperaturaFiltro === "todos" || lead.temperatura === temperaturaFiltro) &&
         passaEstado &&
         (!semContactoFiltro || (new Date((lead as any).updated_at) < setesDiasAtras && estadoNorm === "activo")) &&
-        dentroDoIntervalo
+        dentroDoIntervalo &&
+        dentroDoOrcamento
       );
     });
 
@@ -196,7 +229,7 @@ export function LeadsTable() {
       const dataB = getEntradaTs(b) ?? 0;
       return dataB - dataA; // mais recentes primeiro
     });
-  }, [leads, search, etapaFiltro, origemFiltro, zonaFiltro, tipologiaFiltro, temperaturaFiltro, estadoFiltro, tipoProcessoFiltro, semContactoFiltro, dataDeFiltro, dataAteFiltro]);
+  }, [leads, search, etapaFiltro, origemFiltro, zonaFiltro, tipologiaFiltro, temperaturaFiltro, estadoFiltro, tipoProcessoFiltro, semContactoFiltro, dataDeFiltro, dataAteFiltro, orcamentoMinFiltro, orcamentoMaxFiltro]);
 
   const zonasDisponiveis = Array.from(new Set(leads.map((lead: any) => lead.zona_interesse).filter(Boolean))).sort();
 
@@ -205,13 +238,14 @@ export function LeadsTable() {
     setTipologiaFiltro("todos"); setTemperaturaFiltro("todos"); setEstadoFiltro("todos");
     setTipoProcessoFiltro("todos"); setSemContactoFiltro(false);
     setDataDeFiltro(""); setDataAteFiltro("");
+    setOrcamentoMinFiltro(""); setOrcamentoMaxFiltro("");
   };
 
   const exportarLeads = () => {
-    const headers = ["Data de entrada","Nome","Apelido","Email","Telemóvel","Tipo de processo","Agente","Tipologia","Zona","Origem","Temperatura","Etapa","Estado"];
+    const headers = ["Data de entrada","Nome","Apelido","Email","Telemóvel","Tipo de processo","Agente","Tipologia","Zona","Orçamento","Origem","Temperatura","Etapa","Estado"];
     const rows = leadsFiltrados.map((lead) => {
       const estado = (lead as any).estado_final ?? (lead as any).estado_lead ?? "Activo";
-      return [(lead as any).data_entrada ?? "", lead.nome ?? "", lead.apelido ?? "", lead.email ?? "", lead.telemovel ?? "", (lead as any).tipo_processo ?? "Compra/Venda", (lead as any).agente_nome ?? "", lead.tipologia ?? "", lead.zona_interesse ?? "", lead.origem ?? "", lead.temperatura ?? "", getEtapaTabela(lead), estado];
+      return [(lead as any).data_entrada ?? "", lead.nome ?? "", lead.apelido ?? "", lead.email ?? "", lead.telemovel ?? "", (lead as any).tipo_processo ?? "Compra/Venda", (lead as any).agente_nome ?? "", lead.tipologia ?? "", lead.zona_interesse ?? "", (lead as any).orcamento_maximo ?? "", lead.origem ?? "", lead.temperatura ?? "", getEtapaTabela(lead), estado];
     });
     const csv = [headers, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(";")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
@@ -309,6 +343,77 @@ export function LeadsTable() {
 
   return (
     <div>
+      {showEnviarImovelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-1 text-lg font-semibold text-remax-blue-dark">
+              Enviar Imóvel para {seleccionados.length} lead{seleccionados.length === 1 ? "" : "s"}
+            </h3>
+            <p className="mb-4 text-sm text-brand-muted">
+              {emailsValidos.length} lead{emailsValidos.length === 1 ? "" : "s"} com email válido
+              {semEmailCount > 0 && (
+                <span className="text-amber-600">
+                  {" "}· {semEmailCount} sem email (não {semEmailCount === 1 ? "vai" : "vão"} receber)
+                </span>
+              )}
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-brand-muted">Assunto</label>
+                <input
+                  type="text"
+                  value={assuntoImovel}
+                  onChange={(e) => setAssuntoImovel(e.target.value)}
+                  placeholder="Ex: Novo imóvel disponível — T3 em Cascais"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-remax-blue focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-brand-muted">Mensagem</label>
+                <textarea
+                  rows={6}
+                  value={mensagemImovel}
+                  onChange={(e) => setMensagemImovel(e.target.value)}
+                  placeholder="Cola aqui a descrição do imóvel, características e link do anúncio..."
+                  className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-remax-blue focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs text-brand-muted">
+              O email vai abrir no teu programa de email (Outlook) com todos os destinatários em BCC —
+              cada cliente só vê o próprio email, não os dos outros.
+              {emailsValidos.length > 40 && (
+                <span className="mt-1 block text-amber-600">
+                  Atenção: com {emailsValidos.length} destinatários, alguns clientes de email podem cortar
+                  a lista. Se o email não abrir com todos, tenta dividir o envio em grupos mais pequenos.
+                </span>
+              )}
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowEnviarImovelModal(false)}
+                className="btn-secondary flex-1"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={dispararEnvioImovel}
+                disabled={emailsValidos.length === 0}
+                className="btn-primary flex-1"
+              >
+                Abrir email para {emailsValidos.length} lead{emailsValidos.length === 1 ? "" : "s"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PageHeader title="Leads" description="Gestão de contactos e potenciais clientes">
         <button type="button" onClick={exportarLeads} className="btn-secondary">
           <Download className="h-4 w-4" /> Exportar
@@ -320,6 +425,12 @@ export function LeadsTable() {
         <button type="button" onClick={() => setMostrarFiltros((v) => !v)} className="btn-secondary">
           <Filter className="h-4 w-4" /> Filtrar
         </button>
+        {seleccionados.length > 0 && (
+          <button type="button" onClick={() => setShowEnviarImovelModal(true)} className="btn-secondary">
+            <Mail className="h-4 w-4" />
+            Enviar Imóvel ({seleccionados.length})
+          </button>
+        )}
         {seleccionados.length > 0 && (
           <button type="button" onClick={apagarSeleccionados} disabled={apagando} className="btn-secondary text-red-600 border-red-200 hover:bg-red-50">
             {apagando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -395,6 +506,14 @@ export function LeadsTable() {
               <label className="mb-1 text-xs font-medium text-brand-muted">Data de entrada — Até</label>
               <input type="date" value={dataAteFiltro} onChange={(e) => setDataAteFiltro(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
             </div>
+            <div className="flex flex-col">
+              <label className="mb-1 text-xs font-medium text-brand-muted">Orçamento — Mínimo</label>
+              <input type="number" placeholder="0" value={orcamentoMinFiltro} onChange={(e) => setOrcamentoMinFiltro(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+            </div>
+            <div className="flex flex-col">
+              <label className="mb-1 text-xs font-medium text-brand-muted">Orçamento — Máximo</label>
+              <input type="number" placeholder="Sem limite" value={orcamentoMaxFiltro} onChange={(e) => setOrcamentoMaxFiltro(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+            </div>
           </div>
           <div className="mt-3 flex items-center justify-between">
             <p className="text-sm text-brand-muted">{leadsFiltrados.length} lead{leadsFiltrados.length === 1 ? "" : "s"} encontrado{leadsFiltrados.length === 1 ? "" : "s"}</p>
@@ -428,6 +547,7 @@ export function LeadsTable() {
                 <col className="w-32" />
                 <col className="w-28" />
                 <col className="w-32" />
+                <col className="w-28" />
                 <col className="w-32" />
                 <col className="w-36" />
                 <col className="w-24" />
@@ -444,6 +564,7 @@ export function LeadsTable() {
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">Origem</th>
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">Tipologia</th>
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">Zona</th>
+                  <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">Orçamento</th>
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">Agente</th>
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">Etapa</th>
                   <th className="px-6 py-3 text-left font-semibold text-remax-blue-dark">Estado</th>
@@ -477,6 +598,7 @@ export function LeadsTable() {
                       <td className="px-6 py-4 text-brand-muted truncate" title={lead.origem ?? "—"}>{lead.origem ?? "—"}</td>
                       <td className="px-6 py-4 text-brand-muted truncate" title={lead.tipologia ?? "—"}>{lead.tipologia ?? "—"}</td>
                       <td className="px-6 py-4 text-brand-muted truncate" title={lead.zona_interesse ?? "—"}>{lead.zona_interesse ?? "—"}</td>
+                      <td className="px-6 py-4 text-brand-muted truncate">{formatOrcamento((lead as any).orcamento_maximo)}</td>
                       <td className="px-6 py-4 text-brand-muted truncate" title={lead.agente_nome ?? "—"}>{lead.agente_nome ?? "—"}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-block truncate max-w-full ${ETAPA_BADGE[etapaLabel] ?? "badge-blue"}`} title={etapaLabel}>{etapaLabel}</span>
