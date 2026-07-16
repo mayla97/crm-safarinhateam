@@ -1,28 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { getEtapaLabel, formatOrcamento } from "@/lib/leads";
+import { mapLeadRow } from "@/lib/supabase/mappers";
+import { filterLeadsForReport, getTipoProcesso } from "@/lib/leads-report-filter";
 
 export const dynamic = "force-dynamic";
-
-function parseDataFlexivel(valor: unknown): number | null {
-  if (!valor) return null;
-  const texto = String(valor).trim();
-  if (!texto) return null;
-
-  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(texto)) {
-    const t = new Date(texto).getTime();
-    if (!isNaN(t)) return t;
-  }
-
-  const match = texto.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (match) {
-    const [, dia, mes, ano] = match;
-    const t = new Date(`${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}T00:00:00`).getTime();
-    if (!isNaN(t)) return t;
-  }
-
-  const fallback = new Date(texto).getTime();
-  return isNaN(fallback) ? null : fallback;
-}
 
 interface PrintRelatorioPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -34,19 +15,6 @@ export default async function PrintRelatorioPage({ searchParams }: PrintRelatori
     const v = params[key];
     return Array.isArray(v) ? v[0] : v ?? "";
   };
-
-  const search = getParam("search").toLowerCase();
-  const tipoProcesso = getParam("tipoProcesso") || "todos";
-  const etapaFiltro = getParam("etapa") || "todos";
-  const origemFiltro = getParam("origem") || "todos";
-  const agenteFiltro = getParam("agente") || "todos";
-  const tipologiaFiltro = getParam("tipologia") || "todos";
-  const temperaturaFiltro = getParam("temperatura") || "todos";
-  const estadoFiltro = getParam("estado") || "todos";
-  const dataDe = getParam("dataDe");
-  const dataAte = getParam("dataAte");
-  const orcamentoMin = getParam("orcamentoMin");
-  const orcamentoMax = getParam("orcamentoMax");
 
   const supabase = await createClient();
 
@@ -60,66 +28,25 @@ export default async function PrintRelatorioPage({ searchParams }: PrintRelatori
     .select("*")
     .order("created_at", { ascending: false });
 
-  const todosLeads = leadsData ?? [];
+  // Usa exactamente o mesmo mapper que o resto da app usa (LeadsProvider),
+  // para garantir que os campos (orçamento, agente, tipo de processo, etc.)
+  // ficam idênticos aos usados no filtro da página de Relatórios.
+  const todosLeadsMapeados = (leadsData ?? []).map((row: any) => mapLeadRow(row));
   const historico = historicoData ?? [];
 
-  function getAgenteNome(lead: any) {
-    const agentes = lead.agentes;
-
-    if (!agentes) return "—";
-
-    if (Array.isArray(agentes)) {
-      return agentes[0]?.nome ?? "—";
-    }
-
-    return agentes.nome ?? "—";
-  }
-
-  const dataDeTs = dataDe ? new Date(dataDe + "T00:00:00").getTime() : null;
-  const dataAteTs = dataAte ? new Date(dataAte + "T23:59:59").getTime() : null;
-  const minNum = orcamentoMin ? Number(orcamentoMin) : null;
-  const maxNum = orcamentoMax ? Number(orcamentoMax) : null;
-
-  const leads = todosLeads.filter((lead: any) => {
-    const estadoLead = lead.estado_final ?? lead.estado_lead ?? "Activo";
-    const tipo = lead.tipo_processo ?? "Compra/Venda";
-    const nomeCompleto = `${lead.nome ?? ""} ${lead.apelido ?? ""}`.toLowerCase();
-    const agenteNome = getAgenteNome(lead);
-
-    const dataLeadTs =
-      parseDataFlexivel(lead.data_entrada) ?? parseDataFlexivel(lead.created_at);
-    const dentroDoIntervalo =
-      (!dataDeTs || (dataLeadTs !== null && dataLeadTs >= dataDeTs)) &&
-      (!dataAteTs || (dataLeadTs !== null && dataLeadTs <= dataAteTs));
-
-    const orcamentoLead =
-      lead.orcamento_maximo != null ? Number(lead.orcamento_maximo) : null;
-    const dentroDoOrcamento =
-      (!minNum || (orcamentoLead !== null && orcamentoLead >= minNum)) &&
-      (!maxNum || (orcamentoLead !== null && orcamentoLead <= maxNum));
-
-    return (
-      (!search ||
-        nomeCompleto.includes(search) ||
-        (lead.email ?? "").toLowerCase().includes(search) ||
-        (lead.telemovel ?? "").includes(search) ||
-        (lead.zona_interesse ?? "").toLowerCase().includes(search)) &&
-      (tipoProcesso === "todos" || tipo === tipoProcesso) &&
-      (etapaFiltro === "todos" ||
-        lead.etapa === etapaFiltro ||
-        lead.etapa_arrendamento === etapaFiltro) &&
-      (origemFiltro === "todos" || lead.origem === origemFiltro) &&
-      (agenteFiltro === "todos" || agenteNome === agenteFiltro) &&
-      (tipologiaFiltro === "todos" || lead.tipologia === tipologiaFiltro) &&
-      (temperaturaFiltro === "todos" || lead.temperatura === temperaturaFiltro) &&
-      (estadoFiltro === "todos" ||
-        (estadoFiltro === "activos" &&
-          estadoLead !== "Perdido" &&
-          estadoLead !== "Concluído") ||
-        estadoLead === estadoFiltro) &&
-      dentroDoIntervalo &&
-      dentroDoOrcamento
-    );
+  const leads = filterLeadsForReport(todosLeadsMapeados, {
+    search: getParam("search"),
+    tipoProcesso: getParam("tipoProcesso") || "todos",
+    etapa: getParam("etapa") || "todos",
+    origem: getParam("origem") || "todos",
+    agente: getParam("agente") || "todos",
+    tipologia: getParam("tipologia") || "todos",
+    temperatura: getParam("temperatura") || "todos",
+    estado: getParam("estado") || "todos",
+    dataDe: getParam("dataDe"),
+    dataAte: getParam("dataAte"),
+    orcamentoMin: getParam("orcamentoMin"),
+    orcamentoMax: getParam("orcamentoMax"),
   });
 
   function getNotaPerda(leadId: string) {
@@ -141,6 +68,10 @@ export default async function PrintRelatorioPage({ searchParams }: PrintRelatori
       registo.mensagem ??
       "—"
     );
+  }
+
+  function getAgenteNome(lead: any) {
+    return lead.agente_nome ?? "—";
   }
   return (
     <div id="print-report" className="min-h-screen bg-white p-10 text-black">

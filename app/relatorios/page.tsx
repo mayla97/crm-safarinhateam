@@ -12,6 +12,12 @@ import {
   TIPOLOGIAS,
   TEMPERATURAS,
 } from "@/lib/leads";
+import {
+  filterLeadsForReport,
+  getEstado,
+  getTipoProcesso,
+  getDataEntradaTs,
+} from "@/lib/leads-report-filter";
 
 const ETAPAS_ARRENDAMENTO: Record<string, string> = {
   novo_lead: "Novo lead",
@@ -22,27 +28,6 @@ const ETAPAS_ARRENDAMENTO: Record<string, string> = {
   proposta_apresentada: "Proposta apresentada",
   contrato_assinado: "Contrato assinado",
 };
-
-function parseDataFlexivel(valor: unknown): number | null {
-  if (!valor) return null;
-  const texto = String(valor).trim();
-  if (!texto) return null;
-
-  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(texto)) {
-    const t = new Date(texto).getTime();
-    if (!isNaN(t)) return t;
-  }
-
-  const match = texto.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (match) {
-    const [, dia, mes, ano] = match;
-    const t = new Date(`${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}T00:00:00`).getTime();
-    if (!isNaN(t)) return t;
-  }
-
-  const fallback = new Date(texto).getTime();
-  return isNaN(fallback) ? null : fallback;
-}
 
 export default function RelatoriosPage() {
   const { leads } = useLeads();
@@ -60,16 +45,6 @@ export default function RelatoriosPage() {
   const [orcamentoMin, setOrcamentoMin] = useState("");
   const [orcamentoMax, setOrcamentoMax] = useState("");
 
-  const getEstado = (lead: any) =>
-    lead.estado_final ?? lead.estado_lead ?? "Activo";
-
-  const getTipoProcesso = (lead: any) =>
-    lead.tipo_processo ?? "Compra/Venda";
-
-  const getDataEntrada = (lead: any) => lead.data_entrada ?? lead.created_at;
-  const getDataEntradaTs = (lead: any) =>
-    parseDataFlexivel(lead.data_entrada) ?? parseDataFlexivel(lead.created_at);
-
   const getEtapaRelatorio = (lead: any) => {
     if (getTipoProcesso(lead) === "Arrendamento") {
       const etapaArrendamento = lead.etapa_arrendamento ?? "novo_lead";
@@ -80,59 +55,19 @@ export default function RelatoriosPage() {
   };
 
   const filtrados = useMemo(() => {
-    const dataDeTs = dataDe ? new Date(dataDe + "T00:00:00").getTime() : null;
-    const dataAteTs = dataAte ? new Date(dataAte + "T23:59:59").getTime() : null;
-
-    const resultado = leads.filter((lead: any) => {
-      const termo = search.toLowerCase();
-      const nome = getLeadDisplayName(lead).toLowerCase();
-      const estadoLead = getEstado(lead);
-      const tipo = getTipoProcesso(lead);
-
-      const dataLeadTs = getDataEntradaTs(lead);
-
-      const dentroDoIntervalo =
-        (!dataDeTs || (dataLeadTs !== null && dataLeadTs >= dataDeTs)) &&
-        (!dataAteTs || (dataLeadTs !== null && dataLeadTs <= dataAteTs));
-
-      const orcamentoLead =
-        lead.orcamento_maximo != null ? Number(lead.orcamento_maximo) : null;
-      const minNum = orcamentoMin ? Number(orcamentoMin) : null;
-      const maxNum = orcamentoMax ? Number(orcamentoMax) : null;
-
-      const dentroDoOrcamento =
-        (!minNum || (orcamentoLead !== null && orcamentoLead >= minNum)) &&
-        (!maxNum || (orcamentoLead !== null && orcamentoLead <= maxNum));
-
-      return (
-        (nome.includes(termo) ||
-          (lead.email ?? "").toLowerCase().includes(termo) ||
-          (lead.telemovel ?? "").includes(search) ||
-          (lead.zona_interesse ?? "").toLowerCase().includes(termo)) &&
-        (tipoProcesso === "todos" || tipo === tipoProcesso) &&
-        (etapa === "todos" ||
-          lead.etapa === etapa ||
-          lead.etapa_arrendamento === etapa) &&
-        (origem === "todos" || lead.origem === origem) &&
-        (agente === "todos" ||
-          lead.agente_nome === agente ||
-          lead.agente_id === agente) &&
-        (tipologia === "todos" || lead.tipologia === tipologia) &&
-        (temperatura === "todos" || lead.temperatura === temperatura) &&
-        (estado === "todos" ||
-          (estado === "activos" &&
-            estadoLead !== "Perdido" &&
-            estadoLead !== "Concluído") ||
-          estadoLead === estado) &&
-        dentroDoIntervalo &&
-        dentroDoOrcamento
-      );
-    });
-
-    return resultado.sort((a: any, b: any) => {
-      const dataATs = getDataEntradaTs(a) ?? 0;
-      const dataBTs = getDataEntradaTs(b) ?? 0;
-      return dataBTs - dataATs; // mais recentes primeiro
+    return filterLeadsForReport(leads, {
+      search,
+      tipoProcesso,
+      etapa,
+      origem,
+      agente,
+      tipologia,
+      temperatura,
+      estado,
+      dataDe,
+      dataAte,
+      orcamentoMin,
+      orcamentoMax,
     });
   }, [
     leads,
