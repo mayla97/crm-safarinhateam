@@ -3,7 +3,51 @@ import { getEtapaLabel, formatOrcamento } from "@/lib/leads";
 
 export const dynamic = "force-dynamic";
 
-export default async function PrintRelatorioPage() {
+function parseDataFlexivel(valor: unknown): number | null {
+  if (!valor) return null;
+  const texto = String(valor).trim();
+  if (!texto) return null;
+
+  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(texto)) {
+    const t = new Date(texto).getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  const match = texto.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (match) {
+    const [, dia, mes, ano] = match;
+    const t = new Date(`${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}T00:00:00`).getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  const fallback = new Date(texto).getTime();
+  return isNaN(fallback) ? null : fallback;
+}
+
+interface PrintRelatorioPageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}
+
+export default async function PrintRelatorioPage({ searchParams }: PrintRelatorioPageProps) {
+  const params = await searchParams;
+  const getParam = (key: string) => {
+    const v = params[key];
+    return Array.isArray(v) ? v[0] : v ?? "";
+  };
+
+  const search = getParam("search").toLowerCase();
+  const tipoProcesso = getParam("tipoProcesso") || "todos";
+  const etapaFiltro = getParam("etapa") || "todos";
+  const origemFiltro = getParam("origem") || "todos";
+  const agenteFiltro = getParam("agente") || "todos";
+  const tipologiaFiltro = getParam("tipologia") || "todos";
+  const temperaturaFiltro = getParam("temperatura") || "todos";
+  const estadoFiltro = getParam("estado") || "todos";
+  const dataDe = getParam("dataDe");
+  const dataAte = getParam("dataAte");
+  const orcamentoMin = getParam("orcamentoMin");
+  const orcamentoMax = getParam("orcamentoMax");
+
   const supabase = await createClient();
 
   const { data: leadsData } = await supabase
@@ -16,8 +60,67 @@ export default async function PrintRelatorioPage() {
     .select("*")
     .order("created_at", { ascending: false });
 
-  const leads = leadsData ?? [];
+  const todosLeads = leadsData ?? [];
   const historico = historicoData ?? [];
+
+  function getAgenteNome(lead: any) {
+    const agentes = lead.agentes;
+
+    if (!agentes) return "—";
+
+    if (Array.isArray(agentes)) {
+      return agentes[0]?.nome ?? "—";
+    }
+
+    return agentes.nome ?? "—";
+  }
+
+  const dataDeTs = dataDe ? new Date(dataDe + "T00:00:00").getTime() : null;
+  const dataAteTs = dataAte ? new Date(dataAte + "T23:59:59").getTime() : null;
+  const minNum = orcamentoMin ? Number(orcamentoMin) : null;
+  const maxNum = orcamentoMax ? Number(orcamentoMax) : null;
+
+  const leads = todosLeads.filter((lead: any) => {
+    const estadoLead = lead.estado_final ?? lead.estado_lead ?? "Activo";
+    const tipo = lead.tipo_processo ?? "Compra/Venda";
+    const nomeCompleto = `${lead.nome ?? ""} ${lead.apelido ?? ""}`.toLowerCase();
+    const agenteNome = getAgenteNome(lead);
+
+    const dataLeadTs =
+      parseDataFlexivel(lead.data_entrada) ?? parseDataFlexivel(lead.created_at);
+    const dentroDoIntervalo =
+      (!dataDeTs || (dataLeadTs !== null && dataLeadTs >= dataDeTs)) &&
+      (!dataAteTs || (dataLeadTs !== null && dataLeadTs <= dataAteTs));
+
+    const orcamentoLead =
+      lead.orcamento_maximo != null ? Number(lead.orcamento_maximo) : null;
+    const dentroDoOrcamento =
+      (!minNum || (orcamentoLead !== null && orcamentoLead >= minNum)) &&
+      (!maxNum || (orcamentoLead !== null && orcamentoLead <= maxNum));
+
+    return (
+      (!search ||
+        nomeCompleto.includes(search) ||
+        (lead.email ?? "").toLowerCase().includes(search) ||
+        (lead.telemovel ?? "").includes(search) ||
+        (lead.zona_interesse ?? "").toLowerCase().includes(search)) &&
+      (tipoProcesso === "todos" || tipo === tipoProcesso) &&
+      (etapaFiltro === "todos" ||
+        lead.etapa === etapaFiltro ||
+        lead.etapa_arrendamento === etapaFiltro) &&
+      (origemFiltro === "todos" || lead.origem === origemFiltro) &&
+      (agenteFiltro === "todos" || agenteNome === agenteFiltro) &&
+      (tipologiaFiltro === "todos" || lead.tipologia === tipologiaFiltro) &&
+      (temperaturaFiltro === "todos" || lead.temperatura === temperaturaFiltro) &&
+      (estadoFiltro === "todos" ||
+        (estadoFiltro === "activos" &&
+          estadoLead !== "Perdido" &&
+          estadoLead !== "Concluído") ||
+        estadoLead === estadoFiltro) &&
+      dentroDoIntervalo &&
+      dentroDoOrcamento
+    );
+  });
 
   function getNotaPerda(leadId: string) {
     
@@ -38,17 +141,6 @@ export default async function PrintRelatorioPage() {
       registo.mensagem ??
       "—"
     );
-  }
-  function getAgenteNome(lead: any) {
-    const agentes = lead.agentes;
-  
-    if (!agentes) return "—";
-  
-    if (Array.isArray(agentes)) {
-      return agentes[0]?.nome ?? "—";
-    }
-  
-    return agentes.nome ?? "—";
   }
   return (
     <div id="print-report" className="min-h-screen bg-white p-10 text-black">

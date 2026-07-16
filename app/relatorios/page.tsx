@@ -315,6 +315,25 @@ export default function RelatoriosPage() {
     URL.revokeObjectURL(url);
   };
 
+  const abrirImpressao = () => {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (tipoProcesso !== "todos") params.set("tipoProcesso", tipoProcesso);
+    if (etapa !== "todos") params.set("etapa", etapa);
+    if (origem !== "todos") params.set("origem", origem);
+    if (agente !== "todos") params.set("agente", agente);
+    if (tipologia !== "todos") params.set("tipologia", tipologia);
+    if (temperatura !== "todos") params.set("temperatura", temperatura);
+    if (estado !== "todos") params.set("estado", estado);
+    if (dataDe) params.set("dataDe", dataDe);
+    if (dataAte) params.set("dataAte", dataAte);
+    if (orcamentoMin) params.set("orcamentoMin", orcamentoMin);
+    if (orcamentoMax) params.set("orcamentoMax", orcamentoMax);
+
+    const query = params.toString();
+    window.open(`/relatorios/print${query ? `?${query}` : ""}`, "_blank");
+  };
+
   const limparFiltros = () => {
     setSearch("");
     setTipoProcesso("todos");
@@ -338,7 +357,7 @@ export default function RelatoriosPage() {
       >
         <button
           type="button"
-          onClick={() => window.open("/relatorios/print", "_blank")}
+          onClick={abrirImpressao}
           className="btn-secondary"
         >
           <Printer className="h-4 w-4" />
