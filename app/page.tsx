@@ -2,16 +2,14 @@ import Link from "next/link";
 import { unstable_noStore as noStore, revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  Users,
   ArrowRight,
-  Clock,
   UserX,
   FileCheck2,
-  CircleX,
+  UserPlus,
   Calendar,
+  Home,
+  Building2,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { StatsCard } from "@/components/ui/StatsCard";
 import {
   fetchDashboardOperacional,
   fetchRecentLeads,
@@ -21,7 +19,6 @@ import {
   ETAPA_BADGE,
   getLeadDisplayName,
   formatRelativeTime,
-  PIPELINE_STAGES,
 } from "@/lib/leads";
 import { createClient } from "@/lib/supabase/server";
 
@@ -57,8 +54,8 @@ function formatHora(data?: string) {
   });
 }
 
-function formatDataHora(data?: string) {
-  if (!data) return "Sem data";
+function formatDataHora(data?: string | null) {
+  if (!data) return "Sem data agendada";
   const d = new Date(data);
   const hoje = new Date();
   const amanha = new Date();
@@ -74,99 +71,6 @@ function formatDataHora(data?: string) {
   if (mesmoDia(d, hoje)) return `Hoje, ${hora}`;
   if (mesmoDia(d, amanha)) return `Amanhã, ${hora}`;
   return `${d.toLocaleDateString("pt-PT")}, ${hora}`;
-}
-
-function TaskList({
-  title,
-  items,
-  empty,
-  danger = false,
-}: {
-  title: string;
-  items: TarefaResumo[];
-  empty: string;
-  danger?: boolean;
-}) {
-  return (
-    <div className="card">
-      <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-        <h2 className="font-semibold text-remax-blue-dark">{title}</h2>
-        <Link
-          href="/tarefas"
-          className="flex items-center gap-1 text-sm font-medium text-remax-blue hover:text-remax-red transition-colors"
-        >
-          Ver todas <ArrowRight className="h-4 w-4" />
-        </Link>
-      </div>
-
-      {items.length === 0 ? (
-        <div className="px-6 py-8 text-center text-sm text-brand-muted">
-          {empty}
-        </div>
-      ) : (
-        <ul className="divide-y divide-slate-100">
-          {items.map((tarefa) => (
-            <li key={tarefa.id} className="px-6 py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-slate-800">
-                      {tarefa.titulo}
-                    </p>
-
-                    {tarefa.prioridade && (
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                          tarefa.prioridade === "Alta"
-                            ? "bg-red-100 text-red-700"
-                            : tarefa.prioridade === "Média"
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {tarefa.prioridade}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="mt-1 text-xs text-brand-muted">
-                    {tarefa.leads?.nome
-                      ? `${tarefa.leads.nome} ${tarefa.leads?.apelido ?? ""}`
-                      : "Sem lead"}{" "}
-                    · {tarefa.tipo ?? "Tarefa"} ·{" "}
-                    {formatHora(tarefa.data_limite)}
-                  </p>
-                </div>
-
-                <div className="flex gap-2">
-                  <form action={concluirTarefa}>
-                    <input type="hidden" name="id" value={tarefa.id} />
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition-colors"
-                    >
-                      ✓ Concluir
-                    </button>
-                  </form>
-
-                  <Link
-                    href={`/leads/${tarefa.lead_id}`}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                      danger
-                        ? "bg-remax-red-light text-remax-red"
-                        : "bg-remax-blue-light text-remax-blue"
-                    }`}
-                  >
-                    Abrir lead
-                  </Link>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
 }
 
 export default async function DashboardPage() {
@@ -185,8 +89,9 @@ export default async function DashboardPage() {
   };
 
   let recentLeads: Awaited<ReturnType<typeof fetchRecentLeads>> = [];
-  let escriturasConcluidas = 0;
-  let leadsPerdidos = 0;
+  let escriturasEsteMes = 0;
+  let leadsNovosEstaSemana = 0;
+  let nomeUtilizador = "";
   let proximasVisitas: Array<{
     leadId: string;
     nome: string;
@@ -197,31 +102,59 @@ export default async function DashboardPage() {
   try {
     const supabase = await createClient();
 
-    const [statsData, recentData, leadsStatusRes, leadsVisitaRes] = await Promise.all([
+    const inicioMes = new Date();
+    inicioMes.setDate(1);
+    inicioMes.setHours(0, 0, 0, 0);
+
+    const seteDiasAtras = new Date();
+    seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
+
+    const [
+      statsData,
+      recentData,
+      escriturasMesRes,
+      leadsNovosRes,
+      leadsVisitaRes,
+      userRes,
+    ] = await Promise.all([
       fetchDashboardOperacional(),
       fetchRecentLeads(4),
       supabase
         .from("leads")
-        .select("etapa, estado_final, estado_lead"),
-      // Fonte da verdade: leads que ESTÃO ACTUALMENTE na etapa "Visita
-      // agendada" (Compra/Venda ou Arrendamento), não a tabela de tarefas —
-      // assim mostra sempre quem está genuinamente agendado, mesmo que
-      // tenha entrado nessa etapa antes de existir a tarefa automática.
+        .select("id", { count: "exact", head: true })
+        .or("estado_final.eq.Concluído,estado_lead.eq.Concluído")
+        .gte("updated_at", inicioMes.toISOString()),
+      supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", seteDiasAtras.toISOString()),
       supabase
         .from("leads")
         .select("id, nome, apelido, etapa, etapa_arrendamento, estado_final, estado_lead")
         .or("etapa.eq.visita_agendada,etapa_arrendamento.eq.visita_agendada"),
+      supabase.auth.getUser(),
     ]);
 
     stats = statsData;
     recentLeads = recentData;
+    escriturasEsteMes = escriturasMesRes.count ?? 0;
+    leadsNovosEstaSemana = leadsNovosRes.count ?? 0;
+
+    if (userRes.data?.user) {
+      const { data: perfil } = await supabase
+        .from("perfis")
+        .select("nome")
+        .eq("id", userRes.data.user.id)
+        .single();
+      nomeUtilizador = perfil?.nome?.split(" ")[0] ?? "";
+    }
 
     const leadsEmVisita = (leadsVisitaRes.data ?? []).filter((lead: any) => {
       const estado = lead.estado_final ?? lead.estado_lead ?? "Activo";
       return estado !== "Perdido" && estado !== "Concluído";
     });
 
-    let datasPorLead = new Map<string, string | null>();
+    const datasPorLead = new Map<string, string | null>();
     if (leadsEmVisita.length > 0) {
       const { data: tarefasData } = await supabase
         .from("tarefas")
@@ -249,99 +182,174 @@ export default async function DashboardPage() {
         return new Date(a.dataLimite).getTime() - new Date(b.dataLimite).getTime();
       })
       .slice(0, 5);
-
-    const leadsStatus = leadsStatusRes.data ?? [];
-
-    escriturasConcluidas = leadsStatus.filter((lead) => {
-      const estado = lead.estado_final ?? lead.estado_lead;
-      return estado === "Concluído" || lead.etapa === "escritura_realizada";
-    }).length;
-
-    leadsPerdidos = leadsStatus.filter((lead) => {
-      const estado = lead.estado_final ?? lead.estado_lead;
-      return estado === "Perdido";
-    }).length;
   } catch (err) {
     loadError = err instanceof Error ? err.message : "Erro ao carregar dados";
   }
 
+  // "O que fazer hoje" junta tarefas atrasadas + tarefas de hoje numa única
+  // lista cronológica — visitas já entram aqui automaticamente, porque
+  // também são tarefas (tipo "Confirmar visita").
+  const tarefasUnificadas = [
+    ...stats.tarefasAtrasadasLista.map((t) => ({ ...t, atrasada: true })),
+    ...stats.tarefasHoje.map((t) => ({ ...t, atrasada: false })),
+  ];
+
+  const totalHoje = stats.tarefasHoje.length;
+  const totalAtrasadas = stats.tarefasAtrasadasLista.length;
+  const totalVisitasProximas = proximasVisitas.length;
+
   return (
     <div>
-      <PageHeader
-        title="Dashboard"
-        description="Resumo operacional da equipa Sa Farinha"
-      />
-
       {loadError && (
         <div className="mb-6 rounded-lg border border-remax-red/30 bg-remax-red-light px-4 py-3 text-sm text-remax-red">
           {loadError}
         </div>
       )}
 
-      <div className="mb-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
-        <StatsCard
-          title="Leads ativos"
-          value={stats.leadsAtivos}
-          change="Em acompanhamento comercial"
-          changeType="neutral"
-          icon={Users}
-          iconColor="blue"
-        />
+      {/* Cabeçalho pessoal — o "hoje" resumido numa frase, em vez de
+          números soltos sem contexto de tempo. */}
+      <div className="mb-8 rounded-2xl bg-remax-blue-dark px-8 py-7 text-white">
+        <h1 className="text-2xl font-bold">
+          {nomeUtilizador ? `Olá, ${nomeUtilizador}` : "Olá"}
+        </h1>
+        <p className="mt-1 text-white/70">
+          {totalAtrasadas > 0 && (
+            <span className="font-medium text-remax-red">
+              {totalAtrasadas} tarefa{totalAtrasadas === 1 ? "" : "s"} atrasada{totalAtrasadas === 1 ? "" : "s"}
+            </span>
+          )}
+          {totalAtrasadas > 0 && (totalHoje > 0 || totalVisitasProximas > 0) && " · "}
+          {totalHoje > 0 && `${totalHoje} tarefa${totalHoje === 1 ? "" : "s"} hoje`}
+          {totalHoje > 0 && totalVisitasProximas > 0 && " · "}
+          {totalVisitasProximas > 0 &&
+            `${totalVisitasProximas} visita${totalVisitasProximas === 1 ? "" : "s"} agendada${totalVisitasProximas === 1 ? "" : "s"}`}
+          {totalAtrasadas === 0 && totalHoje === 0 && totalVisitasProximas === 0 &&
+            "Sem tarefas nem visitas pendentes — dia livre."}
+        </p>
+      </div>
 
-        <StatsCard
-          title="Escrituras concluídas"
-          value={escriturasConcluidas}
-          change="Negócios fechados com sucesso"
-          changeType="positive"
-          icon={FileCheck2}
-          iconColor="green"
-        />
-
-        {/* "Leads sem contacto" deixou de mostrar o número em destaque —
-            com a importação inicial, quase toda a base entra nesta
-            contagem, o que tornava o card sempre "gigante" e deixava
-            de funcionar como alerta. Agora é só um atalho para a lista,
-            para retomar aos poucos sem o número a assustar. */}
-        <Link
-          href="/leads?filtro=sem_contacto"
-          className="card flex flex-col justify-between p-5 transition-shadow hover:shadow-md"
-        >
+      <div className="mb-6 grid gap-6 sm:grid-cols-2">
+        <div className="card p-5">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-brand-muted">Leads sem contacto</p>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50">
-              <UserX className="h-4 w-4 text-red-500" />
+            <p className="text-sm font-medium text-brand-muted">Escrituras este mês</p>
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50">
+              <FileCheck2 className="h-4 w-4 text-emerald-600" />
             </div>
           </div>
-          <p className="mt-3 flex items-center gap-1 text-sm font-semibold text-remax-blue">
-            Ver leads para retomar <ArrowRight className="h-3.5 w-3.5" />
-          </p>
-        </Link>
+          <p className="mt-3 text-3xl font-bold text-remax-blue-dark">{escriturasEsteMes}</p>
+          <p className="mt-1 text-xs text-brand-muted">Negócios fechados desde o dia 1</p>
+        </div>
 
-        <StatsCard
-          title="Leads perdidos"
-          value={leadsPerdidos}
-          change="Oportunidades encerradas"
-          changeType="negative"
-          icon={CircleX}
-          iconColor="red"
-        />
+        <div className="card p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-brand-muted">Leads novos esta semana</p>
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50">
+              <UserPlus className="h-4 w-4 text-remax-blue" />
+            </div>
+          </div>
+          <p className="mt-3 text-3xl font-bold text-remax-blue-dark">{leadsNovosEstaSemana}</p>
+          <p className="mt-1 text-xs text-brand-muted">Últimos 7 dias</p>
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <TaskList
-          title="Tarefas de Hoje"
-          items={stats.tarefasHoje}
-          empty="Sem tarefas para hoje."
-        />
-        <TaskList
-          title="Tarefas Atrasadas"
-          items={stats.tarefasAtrasadasLista}
-          empty="Sem tarefas atrasadas."
-          danger
-        />
+      <Link
+        href="/leads?filtro=sem_contacto"
+        className="mb-8 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm transition-colors hover:border-remax-blue/30 hover:bg-slate-50"
+      >
+        <span className="flex items-center gap-2 text-slate-600">
+          <UserX className="h-4 w-4 text-remax-red" />
+          Leads activos sem contacto há mais de 7 dias
+        </span>
+        <span className="flex items-center gap-1 font-medium text-remax-blue">
+          Ver lista <ArrowRight className="h-3.5 w-3.5" />
+        </span>
+      </Link>
+
+      {/* O que fazer hoje — tarefas + visitas juntas, atrasadas primeiro */}
+      <div className="card mb-6">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <h2 className="font-semibold text-remax-blue-dark">O que fazer hoje</h2>
+          <Link
+            href="/tarefas"
+            className="flex items-center gap-1 text-sm font-medium text-remax-blue hover:text-remax-red transition-colors"
+          >
+            Ver todas <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+
+        {tarefasUnificadas.length === 0 ? (
+          <div className="px-6 py-8 text-center text-sm text-brand-muted">
+            Sem tarefas para hoje.
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {tarefasUnificadas.map((tarefa) => (
+              <li key={tarefa.id} className="px-6 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-slate-800">{tarefa.titulo}</p>
+
+                      {tarefa.atrasada && (
+                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                          Atrasada
+                        </span>
+                      )}
+
+                      {!tarefa.atrasada && tarefa.prioridade && (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            tarefa.prioridade === "Alta"
+                              ? "bg-red-100 text-red-700"
+                              : tarefa.prioridade === "Média"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {tarefa.prioridade}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mt-1 text-xs text-brand-muted">
+                      {tarefa.leads?.nome
+                        ? `${tarefa.leads.nome} ${tarefa.leads?.apelido ?? ""}`
+                        : "Sem lead"}{" "}
+                      · {tarefa.tipo ?? "Tarefa"} · {formatHora(tarefa.data_limite)}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <form action={concluirTarefa}>
+                      <input type="hidden" name="id" value={tarefa.id} />
+                      <button
+                        type="submit"
+                        className="rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition-colors"
+                      >
+                        ✓ Concluir
+                      </button>
+                    </form>
+
+                    <Link
+                      href={`/leads/${tarefa.lead_id}`}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                        tarefa.atrasada
+                          ? "bg-remax-red-light text-remax-red"
+                          : "bg-remax-blue-light text-remax-blue"
+                      }`}
+                    >
+                      Abrir lead
+                    </Link>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
-      <div className="mt-6 card">
+      {/* Visitas agendadas para os próximos dias (além de hoje) */}
+      <div className="card mb-6">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h2 className="flex items-center gap-2 font-semibold text-remax-blue-dark">
             <Calendar className="h-4 w-4 text-remax-blue" /> Próximas Visitas
@@ -363,12 +371,8 @@ export default async function DashboardPage() {
             {proximasVisitas.map((visita) => (
               <li key={visita.leadId} className="flex items-center justify-between px-6 py-4">
                 <div>
-                  <p className="font-medium text-slate-800">
-                    {visita.nome || "Sem nome"}
-                  </p>
-                  <p className="mt-1 text-xs text-brand-muted">
-                    {visita.dataLimite ? formatDataHora(visita.dataLimite) : "Sem data agendada"}
-                  </p>
+                  <p className="font-medium text-slate-800">{visita.nome || "Sem nome"}</p>
+                  <p className="mt-1 text-xs text-brand-muted">{formatDataHora(visita.dataLimite)}</p>
                 </div>
                 <Link
                   href={`/leads/${visita.leadId}`}
@@ -382,113 +386,81 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <div className="card">
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-            <h2 className="font-semibold text-remax-blue-dark">
-              Leads Recentes
-            </h2>
-            <Link
-              href="/leads"
-              className="flex items-center gap-1 text-sm font-medium text-remax-blue hover:text-remax-red transition-colors"
-            >
-              Ver todos <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-
-          <ul className="divide-y divide-slate-100">
-            {recentLeads.length === 0 ? (
-              <li className="px-6 py-8 text-center text-sm text-brand-muted">
-                Sem leads registados.
-              </li>
-            ) : (
-              recentLeads.map((lead) => {
-                const etapaLabel = getEtapaLabel(lead.etapa);
-                const estado =
-                  (lead as any).estado_final ??
-                  (lead as any).estado_lead ??
-                  "Activo";
-
-                return (
-                  <li key={lead.id}>
-                    <Link
-                      href={`/leads/${lead.id}`}
-                      className="flex items-center justify-between px-6 py-4 hover:bg-slate-50/80 transition-colors"
-                    >
-                      <div>
-                        <p className="font-medium text-slate-800">
-                          {getLeadDisplayName(lead)}
-                        </p>
-                        <p className="text-xs text-brand-muted">
-                          {lead.origem ?? "—"}
-                        </p>
-                      </div>
-
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                            {estado}
-                          </span>
-                          <span className={ETAPA_BADGE[etapaLabel] ?? "badge-blue"}>
-                            {etapaLabel}
-                          </span>
-                        </div>
-
-                        <span className="flex items-center gap-1 text-xs text-brand-muted">
-                          <Clock className="h-3 w-3" />
-                          {formatRelativeTime(lead.created_at)}
-                        </span>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })
-            )}
-          </ul>
+      {/* Leads recentes, com etiqueta do tipo de processo para bater o olho mais rápido */}
+      <div className="card mb-6">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <h2 className="font-semibold text-remax-blue-dark">Leads Recentes</h2>
+          <Link
+            href="/leads"
+            className="flex items-center gap-1 text-sm font-medium text-remax-blue hover:text-remax-red transition-colors"
+          >
+            Ver todos <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
 
-        <div className="card p-6">
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="font-semibold text-remax-blue-dark">
-              Pipeline — Resumo
-            </h2>
-            <Link
-              href="/pipeline"
-              className="flex items-center gap-1 text-sm font-medium text-remax-blue hover:text-remax-red transition-colors"
-            >
-              Ver pipeline <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-
-          <div className="space-y-4">
-            {PIPELINE_STAGES.map((stage) => {
-              const valor = stats.pipelinePorEtapa[stage.id] ?? 0;
-              const max = Math.max(...Object.values(stats.pipelinePorEtapa), 1);
-              const largura = (valor / max) * 100;
+        <ul className="divide-y divide-slate-100">
+          {recentLeads.length === 0 ? (
+            <li className="px-6 py-8 text-center text-sm text-brand-muted">
+              Sem leads registados.
+            </li>
+          ) : (
+            recentLeads.map((lead) => {
+              const etapaLabel = getEtapaLabel(lead.etapa);
+              const estado =
+                (lead as any).estado_final ?? (lead as any).estado_lead ?? "Activo";
+              const tipoProcesso = (lead as any).tipo_processo ?? "Compra/Venda";
+              const ehArrendamento = tipoProcesso === "Arrendamento";
 
               return (
-                <div key={stage.id}>
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-700">
-                      {stage.title}
-                    </span>
-                    <span className="text-sm font-bold text-remax-blue-dark">
-                      {valor}
-                    </span>
-                  </div>
+                <li key={lead.id}>
+                  <Link
+                    href={`/leads/${lead.id}`}
+                    className="flex items-center justify-between px-6 py-4 hover:bg-slate-50/80 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                          ehArrendamento ? "bg-amber-50" : "bg-blue-50"
+                        }`}
+                        title={tipoProcesso}
+                      >
+                        {ehArrendamento ? (
+                          <Building2 className="h-4 w-4 text-amber-600" />
+                        ) : (
+                          <Home className="h-4 w-4 text-remax-blue" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium text-slate-800">{getLeadDisplayName(lead)}</p>
+                        <p className="text-xs text-brand-muted">{lead.origem ?? "—"}</p>
+                      </div>
+                    </div>
 
-                  <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className={`h-full rounded-full transition-all ${stage.color}`}
-                      style={{ width: `${largura}%` }}
-                    />
-                  </div>
-                </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                          {estado}
+                        </span>
+                        <span className={ETAPA_BADGE[etapaLabel] ?? "badge-blue"}>{etapaLabel}</span>
+                      </div>
+                      <span className="text-xs text-brand-muted">
+                        {formatRelativeTime(lead.created_at)}
+                      </span>
+                    </div>
+                  </Link>
+                </li>
               );
-            })}
-          </div>
-        </div>
+            })
+          )}
+        </ul>
       </div>
+
+      <Link
+        href="/relatorios"
+        className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-4 text-sm font-medium text-brand-muted transition-colors hover:border-remax-blue/40 hover:text-remax-blue"
+      >
+        Ver relatórios completos (pipeline, leads perdidos, taxa de conversão) <ArrowRight className="h-4 w-4" />
+      </Link>
     </div>
   );
 }
