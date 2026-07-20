@@ -187,30 +187,68 @@ export default async function DashboardPage() {
   let recentLeads: Awaited<ReturnType<typeof fetchRecentLeads>> = [];
   let escriturasConcluidas = 0;
   let leadsPerdidos = 0;
-  let proximasVisitas: TarefaResumo[] = [];
+  let proximasVisitas: Array<{
+    leadId: string;
+    nome: string;
+    dataLimite: string | null;
+  }> = [];
   let loadError: string | null = null;
 
   try {
     const supabase = await createClient();
 
-    const [statsData, recentData, leadsStatusRes, visitasRes] = await Promise.all([
+    const [statsData, recentData, leadsStatusRes, leadsVisitaRes] = await Promise.all([
       fetchDashboardOperacional(),
       fetchRecentLeads(4),
       supabase
         .from("leads")
         .select("etapa, estado_final, estado_lead"),
+      // Fonte da verdade: leads que ESTÃO ACTUALMENTE na etapa "Visita
+      // agendada" (Compra/Venda ou Arrendamento), não a tabela de tarefas —
+      // assim mostra sempre quem está genuinamente agendado, mesmo que
+      // tenha entrado nessa etapa antes de existir a tarefa automática.
       supabase
-        .from("tarefas")
-        .select("id, titulo, tipo, lead_id, data_limite, prioridade, concluida, leads(nome, apelido)")
-        .eq("concluida", false)
-        .eq("tipo", "Confirmar visita")
-        .order("data_limite", { ascending: true })
-        .limit(5),
+        .from("leads")
+        .select("id, nome, apelido, etapa, etapa_arrendamento, estado_final, estado_lead")
+        .or("etapa.eq.visita_agendada,etapa_arrendamento.eq.visita_agendada"),
     ]);
 
     stats = statsData;
     recentLeads = recentData;
-    proximasVisitas = (visitasRes.data ?? []) as any;
+
+    const leadsEmVisita = (leadsVisitaRes.data ?? []).filter((lead: any) => {
+      const estado = lead.estado_final ?? lead.estado_lead ?? "Activo";
+      return estado !== "Perdido" && estado !== "Concluído";
+    });
+
+    let datasPorLead = new Map<string, string | null>();
+    if (leadsEmVisita.length > 0) {
+      const { data: tarefasData } = await supabase
+        .from("tarefas")
+        .select("lead_id, data_limite, concluida, tipo")
+        .in("lead_id", leadsEmVisita.map((l: any) => l.id))
+        .eq("concluida", false)
+        .eq("tipo", "Confirmar visita")
+        .order("data_limite", { ascending: true });
+
+      (tarefasData ?? []).forEach((t: any) => {
+        if (!datasPorLead.has(t.lead_id)) datasPorLead.set(t.lead_id, t.data_limite ?? null);
+      });
+    }
+
+    proximasVisitas = leadsEmVisita
+      .map((lead: any) => ({
+        leadId: lead.id,
+        nome: `${lead.nome ?? ""} ${lead.apelido ?? ""}`.trim(),
+        dataLimite: datasPorLead.get(lead.id) ?? null,
+      }))
+      .sort((a, b) => {
+        if (!a.dataLimite && !b.dataLimite) return 0;
+        if (!a.dataLimite) return 1;
+        if (!b.dataLimite) return -1;
+        return new Date(a.dataLimite).getTime() - new Date(b.dataLimite).getTime();
+      })
+      .slice(0, 5);
 
     const leadsStatus = leadsStatusRes.data ?? [];
 
@@ -323,19 +361,17 @@ export default async function DashboardPage() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {proximasVisitas.map((visita) => (
-              <li key={visita.id} className="flex items-center justify-between px-6 py-4">
+              <li key={visita.leadId} className="flex items-center justify-between px-6 py-4">
                 <div>
                   <p className="font-medium text-slate-800">
-                    {visita.leads?.nome
-                      ? `${visita.leads.nome} ${visita.leads?.apelido ?? ""}`
-                      : "Sem lead"}
+                    {visita.nome || "Sem nome"}
                   </p>
                   <p className="mt-1 text-xs text-brand-muted">
-                    {formatDataHora(visita.data_limite)}
+                    {visita.dataLimite ? formatDataHora(visita.dataLimite) : "Sem data agendada"}
                   </p>
                 </div>
                 <Link
-                  href={`/leads/${visita.lead_id}`}
+                  href={`/leads/${visita.leadId}`}
                   className="rounded-lg bg-remax-blue-light px-3 py-1.5 text-xs font-semibold text-remax-blue"
                 >
                   Abrir lead
