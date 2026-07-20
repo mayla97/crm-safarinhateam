@@ -494,6 +494,76 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
     await reloadHistorico();
   };
 
+  const marcarTarefaVisitaConcluida = async () => {
+    await supabase
+      .from("tarefas")
+      .update({ concluida: true })
+      .eq("lead_id", id)
+      .eq("tipo", "Confirmar visita")
+      .eq("concluida", false);
+
+    const { data } = await supabase
+      .from("tarefas")
+      .select("*")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: false });
+    if (data) setTarefas(data);
+  };
+
+  const handleVisitaRealizada = async () => {
+    const ehArrendamento = form.tipo_processo === "Arrendamento";
+
+    if (ehArrendamento) {
+      await supabase
+        .from("leads")
+        .update({ etapa_arrendamento: "visita_realizada", updated_at: new Date().toISOString() })
+        .eq("id", id);
+      await addHistorico(id, "etapa", `Etapa de arrendamento alterada: Visita agendada → Visita realizada`);
+      setForm((prev) => ({ ...prev, etapa_arrendamento: "visita_realizada" }));
+    } else {
+      await supabase
+        .from("leads")
+        .update({ etapa: "visita_realizada", updated_at: new Date().toISOString() })
+        .eq("id", id);
+      await addHistorico(id, "etapa", `Etapa alterada: ${getEtapaLabel("visita_agendada" as LeadEtapa)} → ${getEtapaLabel("visita_realizada" as LeadEtapa)}`);
+      setForm((prev) => ({ ...prev, etapa: "visita_realizada" as LeadEtapa }));
+    }
+
+    await marcarTarefaVisitaConcluida();
+
+    const refreshed = await fetchLeadById(id);
+    if (refreshed) setLead(refreshed);
+    await reloadHistorico();
+    router.refresh();
+  };
+
+  const handleVisitaCancelada = async () => {
+    const ehArrendamento = form.tipo_processo === "Arrendamento";
+
+    if (ehArrendamento) {
+      await supabase
+        .from("leads")
+        .update({ etapa_arrendamento: "em_tratamento", updated_at: new Date().toISOString() })
+        .eq("id", id);
+      await addHistorico(id, "etapa", `Visita cancelada / cliente não compareceu. Etapa de arrendamento voltou para "Em tratamento"`);
+      setForm((prev) => ({ ...prev, etapa_arrendamento: "em_tratamento" }));
+    } else {
+      await supabase
+        .from("leads")
+        .update({ etapa: "em_tratamento", updated_at: new Date().toISOString() })
+        .eq("id", id);
+      await addHistorico(id, "etapa", `Visita cancelada / cliente não compareceu. Etapa voltou para "Em tratamento"`);
+      setForm((prev) => ({ ...prev, etapa: "em_tratamento" as LeadEtapa }));
+    }
+
+    await marcarTarefaVisitaConcluida();
+
+    const refreshed = await fetchLeadById(id);
+    if (refreshed) setLead(refreshed);
+    await reloadHistorico();
+    router.refresh();
+  };
+
   const criarTarefa = async () => {
     if (!novaTarefa.titulo.trim()) return;
 
@@ -605,6 +675,8 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
       : getEtapaLabel(lead.etapa);
 
   const motivoPerdaAtual = (lead as any).motivo_perda ?? null;
+
+  const emVisitaAgendada = etapaLabel === "Visita agendada";
 
   return (
     <div>
@@ -819,6 +891,26 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
                 <strong>Motivo da perda:</strong>{" "}
                 {motivoPerdaAtual ?? "Não informado"}
               </span>
+            </div>
+          )}
+
+          {emVisitaAgendada && form.estado_lead !== "Perdido" && (
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <span className="font-medium">Visita agendada — já aconteceu?</span>
+              <button
+                type="button"
+                onClick={handleVisitaRealizada}
+                className="rounded-lg bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200"
+              >
+                ✓ Realizada
+              </button>
+              <button
+                type="button"
+                onClick={handleVisitaCancelada}
+                className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200"
+              >
+                ✕ Cancelar
+              </button>
             </div>
           )}
         </div>

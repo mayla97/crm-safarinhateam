@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import {
-  Loader2, Flame, Snowflake, Thermometer, MapPin, Home, Clock, PauseCircle,
+  Loader2, Flame, Snowflake, Thermometer, MapPin, Home, Clock, PauseCircle, Check, X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useLeads } from "@/components/leads/LeadsProvider";
@@ -48,15 +48,24 @@ function getEntradaTs(lead: any): number | null {
   return parseDataFlexivel(lead.data_entrada) ?? parseDataFlexivel(lead.created_at);
 }
 
+interface PendingVisita {
+  leadId: string;
+  tipoProcesso: "compra" | "arrendamento";
+}
+
 export function PipelineBoard() {
   const { leads, loading, error, updateLeadEtapa, refreshLeads } = useLeads();
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"compra" | "arrendamento">("compra");
 
-  // ─── Scroll horizontal por arrasto (clicar e arrastar em qualquer parte
-  // vazia do quadro para ver as outras etapas, sem ter de usar a barra
-  // de scroll no fundo da página) ─────────────────────────────────────────
+  // ─── Agendar visita (modal a pedir data/hora ao mover para "Visita agendada") ──
+  const [pendingVisita, setPendingVisita] = useState<PendingVisita | null>(null);
+  const [visitaData, setVisitaData] = useState("");
+  const [visitaNota, setVisitaNota] = useState("");
+  const [guardandoVisita, setGuardandoVisita] = useState(false);
+
+  // ─── Scroll horizontal por arrasto ──────────────────────────────────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isPanningRef = useRef(false);
   const startXRef = useRef(0);
@@ -64,10 +73,8 @@ export function PipelineBoard() {
   const [isPanning, setIsPanning] = useState(false);
 
   const handlePanMouseDown = (e: React.MouseEvent) => {
-    // Não iniciar o "pan" se o clique for num card de lead (esses têm o
-    // seu próprio drag-and-drop para mudar de etapa) ou num link.
     const target = e.target as HTMLElement;
-    if (target.closest('[draggable="true"]') || target.closest("a")) return;
+    if (target.closest('[draggable="true"]') || target.closest("a") || target.closest("button")) return;
 
     isPanningRef.current = true;
     setIsPanning(true);
@@ -108,6 +115,13 @@ export function PipelineBoard() {
     if (!leadId) return;
     const lead = leads.find((l) => l.id === leadId);
     if (!lead || lead.etapa === etapa) return;
+
+    if (etapa === "visita_agendada") {
+      setPendingVisita({ leadId, tipoProcesso: "compra" });
+      setDraggingId(null);
+      return;
+    }
+
     setUpdatingId(leadId);
     try {
       await updateLeadEtapa(leadId, etapa);
@@ -129,6 +143,13 @@ export function PipelineBoard() {
     const lead = leads.find((l) => l.id === leadId);
     const etapaAnterior = (lead as any)?.etapa_arrendamento ?? "novo_lead";
     if (etapaAnterior === etapa) return;
+
+    if (etapa === "visita_agendada") {
+      setPendingVisita({ leadId, tipoProcesso: "arrendamento" });
+      setDraggingId(null);
+      return;
+    }
+
     setUpdatingId(leadId);
     try {
       await supabase.from("leads").update({ etapa_arrendamento: etapa, updated_at: new Date().toISOString() }).eq("id", leadId);
@@ -142,6 +163,105 @@ export function PipelineBoard() {
     finally { setUpdatingId(null); setDraggingId(null); }
   };
 
+  const cancelarModalVisita = () => {
+    setPendingVisita(null);
+    setVisitaData("");
+    setVisitaNota("");
+  };
+
+  const confirmarAgendamentoVisita = async () => {
+    if (!pendingVisita) return;
+    const { leadId, tipoProcesso } = pendingVisita;
+    const lead = leads.find((l) => l.id === leadId);
+    if (!lead) return;
+
+    setGuardandoVisita(true);
+    try {
+      if (tipoProcesso === "compra") {
+        await updateLeadEtapa(leadId, "visita_agendada");
+        await addHistorico(leadId, "etapa", `Etapa alterada: ${ETAPA_LABELS[lead.etapa]} → ${ETAPA_LABELS["visita_agendada"]}`);
+      } else {
+        const etapaAnterior = (lead as any)?.etapa_arrendamento ?? "novo_lead";
+        await supabase.from("leads").update({ etapa_arrendamento: "visita_agendada", updated_at: new Date().toISOString() }).eq("id", leadId);
+        await addHistorico(leadId, "etapa", `Etapa de arrendamento alterada: ${ETAPAS_ARR[etapaAnterior] ?? etapaAnterior} → ${ETAPAS_ARR["visita_agendada"]}`);
+      }
+
+      await supabase.from("tarefas").insert({
+        lead_id: leadId,
+        titulo: "Visita agendada",
+        tipo: "Confirmar visita",
+        prioridade: "Alta",
+        data_limite: visitaData || null,
+        descricao: visitaNota || null,
+        concluida: false,
+      });
+
+      if (visitaData) {
+        await addHistorico(
+          leadId,
+          "followup",
+          `Visita agendada para ${new Date(visitaData).toLocaleString("pt-PT")}${visitaNota ? `. Nota: ${visitaNota}` : ""}`
+        );
+      }
+
+      await refreshLeads();
+      cancelarModalVisita();
+    } catch {
+      await refreshLeads();
+    } finally {
+      setGuardandoVisita(false);
+    }
+  };
+
+  const marcarVisitaComoConcluida = async (leadId: string) => {
+    await supabase
+      .from("tarefas")
+      .update({ concluida: true })
+      .eq("lead_id", leadId)
+      .eq("tipo", "Confirmar visita")
+      .eq("concluida", false);
+  };
+
+  const handleVisitaRealizada = async (lead: any) => {
+    setUpdatingId(lead.id);
+    try {
+      const tipo = String(lead.tipo_processo ?? "").trim().toLowerCase();
+      if (tipo === "arrendamento") {
+        await supabase.from("leads").update({ etapa_arrendamento: "visita_realizada", updated_at: new Date().toISOString() }).eq("id", lead.id);
+        await addHistorico(lead.id, "etapa", `Etapa de arrendamento alterada: ${ETAPAS_ARR["visita_agendada"]} → ${ETAPAS_ARR["visita_realizada"]}`);
+      } else {
+        await updateLeadEtapa(lead.id, "visita_realizada");
+        await addHistorico(lead.id, "etapa", `Etapa alterada: ${ETAPA_LABELS["visita_agendada"]} → ${ETAPA_LABELS["visita_realizada"]}`);
+      }
+      await marcarVisitaComoConcluida(lead.id);
+      await refreshLeads();
+    } catch {
+      await refreshLeads();
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleVisitaCancelada = async (lead: any) => {
+    setUpdatingId(lead.id);
+    try {
+      const tipo = String(lead.tipo_processo ?? "").trim().toLowerCase();
+      if (tipo === "arrendamento") {
+        await supabase.from("leads").update({ etapa_arrendamento: "em_tratamento", updated_at: new Date().toISOString() }).eq("id", lead.id);
+        await addHistorico(lead.id, "etapa", `Visita cancelada / cliente não compareceu. Etapa de arrendamento voltou de "${ETAPAS_ARR["visita_agendada"]}" para "${ETAPAS_ARR["em_tratamento"]}"`);
+      } else {
+        await updateLeadEtapa(lead.id, "em_tratamento");
+        await addHistorico(lead.id, "etapa", `Visita cancelada / cliente não compareceu. Etapa voltou de "${ETAPA_LABELS["visita_agendada"]}" para "${ETAPA_LABELS["em_tratamento"]}"`);
+      }
+      await marcarVisitaComoConcluida(lead.id);
+      await refreshLeads();
+    } catch {
+      await refreshLeads();
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const getTemperatureStyle = (temp?: string | null) => {
     switch (temp) {
       case "quente": return { icon: Flame, className: "bg-red-50 text-red-600 border-red-100" };
@@ -150,7 +270,7 @@ export function PipelineBoard() {
     }
   };
 
-  const renderCard = (lead: any, onDrop?: (etapa: any, id: string) => void) => {
+  const renderCard = (lead: any, isVisitaAgendada: boolean) => {
     const estado = lead.estado_final ?? lead.estado_lead ?? "Activo";
     const pausado = estado === "Pausado";
     const tempStyle = getTemperatureStyle(lead.temperatura);
@@ -189,6 +309,29 @@ export function PipelineBoard() {
               <span className="rounded-full bg-remax-blue-light px-2.5 py-1 text-xs font-medium text-remax-blue">{lead.origem ?? "Sem origem"}</span>
             </div>
           </Link>
+
+          {isVisitaAgendada && (
+            <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleVisitaRealizada(lead); }}
+                disabled={updatingId === lead.id}
+                className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-100 px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition-colors"
+              >
+                <Check className="h-3 w-3" /> Realizada
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleVisitaCancelada(lead); }}
+                disabled={updatingId === lead.id}
+                className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                <X className="h-3 w-3" /> Cancelar
+              </button>
+            </div>
+          )}
         </div>
       </li>
     );
@@ -220,7 +363,7 @@ export function PipelineBoard() {
               </div>
             </div>
             <ul className={`flex flex-col gap-4 p-4 ${isEmpty ? "h-[150px]" : "min-h-[600px] flex-1"}`}>
-              {stageLds.map((lead) => renderCard(lead, onDrop))}
+              {stageLds.map((lead) => renderCard(lead, stage.id === "visita_agendada"))}
               {isEmpty && (
                 <li className="flex h-full items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/60 p-6 text-center text-sm text-slate-400">
                   Arraste leads para aqui
@@ -235,6 +378,61 @@ export function PipelineBoard() {
 
   return (
     <div>
+      {pendingVisita && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold text-remax-blue-dark">
+              Agendar Visita
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-brand-muted">Data e hora da visita</label>
+                <input
+                  type="datetime-local"
+                  value={visitaData}
+                  onChange={(e) => setVisitaData(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-remax-blue focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-brand-muted">Nota (opcional)</label>
+                <textarea
+                  rows={3}
+                  value={visitaNota}
+                  onChange={(e) => setVisitaNota(e.target.value)}
+                  placeholder="Morada, quem vai acompanhar, etc."
+                  className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-remax-blue focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs text-brand-muted">
+              Isto cria uma tarefa "Confirmar visita" com esta data, visível em Tarefas, Calendário e no Dashboard.
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={cancelarModalVisita}
+                className="btn-secondary flex-1"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarAgendamentoVisita}
+                disabled={guardandoVisita}
+                className="btn-primary flex-1"
+              >
+                {guardandoVisita ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PageHeader title="Pipeline" description="Arraste os leads entre etapas" />
 
       {error && (

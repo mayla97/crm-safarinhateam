@@ -8,6 +8,7 @@ import {
   UserX,
   FileCheck2,
   CircleX,
+  CalendarClock,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatsCard } from "@/components/ui/StatsCard";
@@ -54,6 +55,25 @@ function formatHora(data?: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatDataHora(data?: string) {
+  if (!data) return "Sem data";
+  const d = new Date(data);
+  const hoje = new Date();
+  const amanha = new Date();
+  amanha.setDate(hoje.getDate() + 1);
+
+  const mesmoDia = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  const hora = d.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" });
+
+  if (mesmoDia(d, hoje)) return `Hoje, ${hora}`;
+  if (mesmoDia(d, amanha)) return `Amanhã, ${hora}`;
+  return `${d.toLocaleDateString("pt-PT")}, ${hora}`;
 }
 
 function TaskList({
@@ -167,21 +187,30 @@ export default async function DashboardPage() {
   let recentLeads: Awaited<ReturnType<typeof fetchRecentLeads>> = [];
   let escriturasConcluidas = 0;
   let leadsPerdidos = 0;
+  let proximasVisitas: TarefaResumo[] = [];
   let loadError: string | null = null;
 
   try {
     const supabase = await createClient();
 
-    const [statsData, recentData, leadsStatusRes] = await Promise.all([
+    const [statsData, recentData, leadsStatusRes, visitasRes] = await Promise.all([
       fetchDashboardOperacional(),
       fetchRecentLeads(4),
       supabase
         .from("leads")
         .select("etapa, estado_final, estado_lead"),
+      supabase
+        .from("tarefas")
+        .select("id, titulo, tipo, lead_id, data_limite, prioridade, concluida, leads(nome, apelido)")
+        .eq("concluida", false)
+        .eq("tipo", "Confirmar visita")
+        .order("data_limite", { ascending: true })
+        .limit(5),
     ]);
 
     stats = statsData;
     recentLeads = recentData;
+    proximasVisitas = (visitasRes.data ?? []) as any;
 
     const leadsStatus = leadsStatusRes.data ?? [];
 
@@ -230,16 +259,25 @@ export default async function DashboardPage() {
           iconColor="green"
         />
 
-<Link href="/leads?filtro=sem_contacto" className="block">
-  <StatsCard
-    title="Leads sem contacto"
-    value={stats.leadsSeContacto}
-    change="Sem atualização há 7 dias"
-    changeType="negative"
-    icon={UserX}
-    iconColor="red"
-  />
-</Link>
+        {/* "Leads sem contacto" deixou de mostrar o número em destaque —
+            com a importação inicial, quase toda a base entra nesta
+            contagem, o que tornava o card sempre "gigante" e deixava
+            de funcionar como alerta. Agora é só um atalho para a lista,
+            para retomar aos poucos sem o número a assustar. */}
+        <Link
+          href="/leads?filtro=sem_contacto"
+          className="card flex flex-col justify-between p-5 transition-shadow hover:shadow-md"
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-brand-muted">Leads sem contacto</p>
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50">
+              <UserX className="h-4 w-4 text-red-500" />
+            </div>
+          </div>
+          <p className="mt-3 flex items-center gap-1 text-sm font-semibold text-remax-blue">
+            Ver leads para retomar <ArrowRight className="h-3.5 w-3.5" />
+          </p>
+        </Link>
 
         <StatsCard
           title="Leads perdidos"
@@ -263,6 +301,49 @@ export default async function DashboardPage() {
           empty="Sem tarefas atrasadas."
           danger
         />
+      </div>
+
+      <div className="mt-6 card">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <h2 className="flex items-center gap-2 font-semibold text-remax-blue-dark">
+            <CalendarClock className="h-4 w-4 text-remax-blue" /> Próximas Visitas
+          </h2>
+          <Link
+            href="/pipeline"
+            className="flex items-center gap-1 text-sm font-medium text-remax-blue hover:text-remax-red transition-colors"
+          >
+            Ver pipeline <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+
+        {proximasVisitas.length === 0 ? (
+          <div className="px-6 py-8 text-center text-sm text-brand-muted">
+            Sem visitas agendadas.
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {proximasVisitas.map((visita) => (
+              <li key={visita.id} className="flex items-center justify-between px-6 py-4">
+                <div>
+                  <p className="font-medium text-slate-800">
+                    {visita.leads?.nome
+                      ? `${visita.leads.nome} ${visita.leads?.apelido ?? ""}`
+                      : "Sem lead"}
+                  </p>
+                  <p className="mt-1 text-xs text-brand-muted">
+                    {formatDataHora(visita.data_limite)}
+                  </p>
+                </div>
+                <Link
+                  href={`/leads/${visita.lead_id}`}
+                  className="rounded-lg bg-remax-blue-light px-3 py-1.5 text-xs font-semibold text-remax-blue"
+                >
+                  Abrir lead
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
