@@ -8,7 +8,7 @@ import {
   UserX,
   FileCheck2,
   CircleX,
-  CalendarClock,
+  Calendar,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatsCard } from "@/components/ui/StatsCard";
@@ -306,7 +306,7 @@ export default async function DashboardPage() {
       <div className="mt-6 card">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h2 className="flex items-center gap-2 font-semibold text-remax-blue-dark">
-            <CalendarClock className="h-4 w-4 text-remax-blue" /> Próximas Visitas
+            <Calendar className="h-4 w-4 text-remax-blue" /> Próximas Visitas
           </h2>
           <Link
             href="/pipeline"
