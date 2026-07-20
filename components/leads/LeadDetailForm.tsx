@@ -144,6 +144,11 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
     descricao: "",
   });
 
+  const [showVisitaModal, setShowVisitaModal] = useState(false);
+  const [visitaDataInput, setVisitaDataInput] = useState("");
+  const [visitaNotaInput, setVisitaNotaInput] = useState("");
+  const [guardandoVisita, setGuardandoVisita] = useState(false);
+
   const [form, setForm] = useState({
     nome: "",
     apelido: "",
@@ -564,6 +569,71 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
     router.refresh();
   };
 
+  const confirmarAgendamentoVisita = async () => {
+    const ehArrendamento = form.tipo_processo === "Arrendamento";
+
+    setGuardandoVisita(true);
+    try {
+      if (ehArrendamento) {
+        await supabase
+          .from("leads")
+          .update({ etapa_arrendamento: "visita_agendada", updated_at: new Date().toISOString() })
+          .eq("id", id);
+        await addHistorico(id, "etapa", `Etapa de arrendamento alterada: ${ETAPAS_ARRENDAMENTO[form.etapa_arrendamento] ?? form.etapa_arrendamento} → Visita agendada`);
+        setForm((prev) => ({ ...prev, etapa_arrendamento: "visita_agendada" }));
+      } else {
+        await supabase
+          .from("leads")
+          .update({ etapa: "visita_agendada", updated_at: new Date().toISOString() })
+          .eq("id", id);
+        await addHistorico(id, "etapa", `Etapa alterada: ${getEtapaLabel(form.etapa)} → Visita agendada`);
+        setForm((prev) => ({ ...prev, etapa: "visita_agendada" as LeadEtapa }));
+      }
+
+      await supabase.from("tarefas").insert({
+        lead_id: id,
+        titulo: "Visita agendada",
+        tipo: "Confirmar visita",
+        prioridade: "Alta",
+        data_limite: visitaDataInput || null,
+        descricao: visitaNotaInput || null,
+        concluida: false,
+      });
+
+      if (visitaDataInput) {
+        await addHistorico(
+          id,
+          "followup",
+          `Visita agendada para ${new Date(visitaDataInput).toLocaleString("pt-PT")}${visitaNotaInput ? `. Nota: ${visitaNotaInput}` : ""}`
+        );
+      }
+
+      const refreshed = await fetchLeadById(id);
+      if (refreshed) setLead(refreshed);
+
+      const { data: tarefasData } = await supabase
+        .from("tarefas")
+        .select("*")
+        .eq("lead_id", id)
+        .order("created_at", { ascending: false });
+      if (tarefasData) setTarefas(tarefasData);
+
+      await reloadHistorico();
+      setShowVisitaModal(false);
+      setVisitaDataInput("");
+      setVisitaNotaInput("");
+      router.refresh();
+    } finally {
+      setGuardandoVisita(false);
+    }
+  };
+
+  const cancelarModalAgendamentoVisita = () => {
+    setShowVisitaModal(false);
+    setVisitaDataInput("");
+    setVisitaNotaInput("");
+  };
+
   const criarTarefa = async () => {
     if (!novaTarefa.titulo.trim()) return;
 
@@ -835,6 +905,59 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
         </div>
       )}
 
+      {showVisitaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold text-remax-blue-dark">
+              Agendar Visita
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className={labelClass}>Data e hora da visita</label>
+                <input
+                  type="datetime-local"
+                  className={inputClass}
+                  value={visitaDataInput}
+                  onChange={(e) => setVisitaDataInput(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>Nota (opcional)</label>
+                <textarea
+                  className={`${inputClass} resize-none`}
+                  rows={3}
+                  value={visitaNotaInput}
+                  onChange={(e) => setVisitaNotaInput(e.target.value)}
+                  placeholder="Morada, quem vai acompanhar, etc."
+                />
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs text-brand-muted">
+              Isto cria uma tarefa &quot;Confirmar visita&quot; com esta data, visível em Tarefas, Calendário e no Dashboard.
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={cancelarModalAgendamentoVisita}
+                className="btn-secondary flex-1"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarAgendamentoVisita}
+                disabled={guardandoVisita}
+                className="btn-primary flex-1"
+              >
+                {guardandoVisita ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Link
         href="/leads"
         className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-remax-blue transition-colors hover:text-remax-red"
@@ -1059,12 +1182,16 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
                     <select
                       className={inputClass}
                       value={form.etapa_arrendamento}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        if (e.target.value === "visita_agendada") {
+                          setShowVisitaModal(true);
+                          return;
+                        }
                         setForm({
                           ...form,
                           etapa_arrendamento: e.target.value,
-                        })
-                      }
+                        });
+                      }}
                     >
                       {Object.entries(ETAPAS_ARRENDAMENTO).map(
                         ([value, label]) => (
@@ -1078,12 +1205,16 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
                     <select
                       className={inputClass}
                       value={form.etapa}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        if (e.target.value === "visita_agendada") {
+                          setShowVisitaModal(true);
+                          return;
+                        }
                         setForm({
                           ...form,
                           etapa: e.target.value as LeadEtapa,
-                        })
-                      }
+                        });
+                      }}
                     >
                       {(Object.keys(ETAPA_LABELS) as LeadEtapa[])
                         .filter((e) => e !== "cpcv_enviado")
