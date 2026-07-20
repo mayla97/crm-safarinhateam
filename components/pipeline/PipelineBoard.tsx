@@ -409,7 +409,7 @@ export function PipelineBoard() {
             </div>
 
             <p className="mt-3 text-xs text-brand-muted">
-              Isto cria uma tarefa "Confirmar visita" com esta data, visível em Tarefas, Calendário e no Dashboard.
+              Isto cria uma tarefa &quot;Confirmar visita&quot; com esta data, visível em Tarefas, Calendário e no Dashboard.
             </p>
 
             <div className="mt-6 flex gap-3">
