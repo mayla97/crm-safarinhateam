@@ -15,13 +15,37 @@ export default function DefinirSenhaPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // O link do convite/reset já vem com o token na URL.
-    // O supabase-js trata disto automaticamente (detectSessionInUrl)
-    // e cria a sessão temporária — só precisamos confirmar que existe.
-    supabase.auth.getSession().then(({ data }) => {
+    const processarLinkDeConvite = async () => {
+      // Formato actual do Supabase para convites/reset: vem na própria URL
+      // visível como ?token_hash=...&type=invite (em vez do antigo
+      // #access_token=... escondido no hash). Precisa de ser trocado
+      // explicitamente por uma sessão com verifyOtp — o getSession()
+      // sozinho não trata este formato.
+      const params = new URLSearchParams(window.location.search);
+      const tokenHash = params.get("token_hash");
+      const type = params.get("type");
+
+      if (tokenHash && type) {
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: type as "invite" | "recovery" | "email",
+        });
+
+        if (!verifyError) {
+          setSessaoValida(true);
+          setChecking(false);
+          return;
+        }
+      }
+
+      // Fallback: formato antigo (#access_token=...), que o supabase-js
+      // já processa sozinho via detectSessionInUrl.
+      const { data } = await supabase.auth.getSession();
       setSessaoValida(!!data.session);
       setChecking(false);
-    });
+    };
+
+    processarLinkDeConvite();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,7 +73,7 @@ export default function DefinirSenhaPage() {
       return;
     }
 
-    router.push("/dashboard");
+    router.push("/");
   };
 
   if (checking) {
