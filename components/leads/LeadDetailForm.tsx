@@ -515,22 +515,27 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
     if (data) setTarefas(data);
   };
 
-  const handleVisitaRealizada = async () => {
+  const [showResultadoVisitaModal, setShowResultadoVisitaModal] = useState<"realizada" | "cancelada" | null>(null);
+  const [notaResultadoVisita, setNotaResultadoVisita] = useState("");
+  const [guardandoResultadoVisita, setGuardandoResultadoVisita] = useState(false);
+
+  const handleVisitaRealizada = async (nota: string) => {
     const ehArrendamento = form.tipo_processo === "Arrendamento";
+    const notaTexto = nota.trim() ? `. Nota da visita: ${nota.trim()}` : "";
 
     if (ehArrendamento) {
       await supabase
         .from("leads")
         .update({ etapa_arrendamento: "visita_realizada", updated_at: new Date().toISOString() })
         .eq("id", id);
-      await addHistorico(id, "etapa", `Etapa de arrendamento alterada: Visita agendada → Visita realizada`);
+      await addHistorico(id, "etapa", `Etapa de arrendamento alterada: Visita agendada → Visita realizada${notaTexto}`);
       setForm((prev) => ({ ...prev, etapa_arrendamento: "visita_realizada" }));
     } else {
       await supabase
         .from("leads")
         .update({ etapa: "visita_realizada", updated_at: new Date().toISOString() })
         .eq("id", id);
-      await addHistorico(id, "etapa", `Etapa alterada: ${getEtapaLabel("visita_agendada" as LeadEtapa)} → ${getEtapaLabel("visita_realizada" as LeadEtapa)}`);
+      await addHistorico(id, "etapa", `Etapa alterada: ${getEtapaLabel("visita_agendada" as LeadEtapa)} → ${getEtapaLabel("visita_realizada" as LeadEtapa)}${notaTexto}`);
       setForm((prev) => ({ ...prev, etapa: "visita_realizada" as LeadEtapa }));
     }
 
@@ -542,22 +547,23 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
     router.refresh();
   };
 
-  const handleVisitaCancelada = async () => {
+  const handleVisitaCancelada = async (nota: string) => {
     const ehArrendamento = form.tipo_processo === "Arrendamento";
+    const notaTexto = nota.trim() ? ` Nota: ${nota.trim()}` : "";
 
     if (ehArrendamento) {
       await supabase
         .from("leads")
         .update({ etapa_arrendamento: "em_tratamento", updated_at: new Date().toISOString() })
         .eq("id", id);
-      await addHistorico(id, "etapa", `Visita cancelada / cliente não compareceu. Etapa de arrendamento voltou para "Em tratamento"`);
+      await addHistorico(id, "etapa", `Visita cancelada / cliente não compareceu. Etapa de arrendamento voltou para "Em tratamento".${notaTexto}`);
       setForm((prev) => ({ ...prev, etapa_arrendamento: "em_tratamento" }));
     } else {
       await supabase
         .from("leads")
         .update({ etapa: "em_tratamento", updated_at: new Date().toISOString() })
         .eq("id", id);
-      await addHistorico(id, "etapa", `Visita cancelada / cliente não compareceu. Etapa voltou para "Em tratamento"`);
+      await addHistorico(id, "etapa", `Visita cancelada / cliente não compareceu. Etapa voltou para "Em tratamento".${notaTexto}`);
       setForm((prev) => ({ ...prev, etapa: "em_tratamento" as LeadEtapa }));
     }
 
@@ -567,6 +573,22 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
     if (refreshed) setLead(refreshed);
     await reloadHistorico();
     router.refresh();
+  };
+
+  const confirmarResultadoVisitaDetalhe = async () => {
+    if (!showResultadoVisitaModal) return;
+    setGuardandoResultadoVisita(true);
+    try {
+      if (showResultadoVisitaModal === "realizada") {
+        await handleVisitaRealizada(notaResultadoVisita);
+      } else {
+        await handleVisitaCancelada(notaResultadoVisita);
+      }
+      setShowResultadoVisitaModal(null);
+      setNotaResultadoVisita("");
+    } finally {
+      setGuardandoResultadoVisita(false);
+    }
   };
 
   const confirmarAgendamentoVisita = async () => {
@@ -958,6 +980,51 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
         </div>
       )}
 
+      {showResultadoVisitaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold text-remax-blue-dark">
+              {showResultadoVisitaModal === "realizada" ? "Como foi a visita?" : "Visita cancelada"}
+            </h3>
+
+            <div>
+              <label className={labelClass}>Nota (opcional, mas ajuda a lembrar depois)</label>
+              <textarea
+                className={`${inputClass} resize-none`}
+                rows={4}
+                value={notaResultadoVisita}
+                onChange={(e) => setNotaResultadoVisita(e.target.value)}
+                placeholder={
+                  showResultadoVisitaModal === "realizada"
+                    ? "Ex: gostou muito da zona, mas quer algo maior. Não gosta de janelas viradas a rua."
+                    : "Ex: cliente remarcou, não atendeu, desistiu..."
+                }
+              />
+            </div>
+
+            <p className="mt-3 text-xs text-brand-muted">
+              Fica guardado na timeline do lead. A temperatura não muda sozinha — se quiseres ajustar, faz isso depois de leres a nota.
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => { setShowResultadoVisitaModal(null); setNotaResultadoVisita(""); }}
+                className="btn-secondary flex-1"
+              >
+                Voltar
+              </button>
+              <button
+                onClick={confirmarResultadoVisitaDetalhe}
+                disabled={guardandoResultadoVisita}
+                className="btn-primary flex-1"
+              >
+                {guardandoResultadoVisita ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Link
         href="/leads"
         className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-remax-blue transition-colors hover:text-remax-red"
@@ -1022,14 +1089,14 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
               <span className="font-medium">Visita agendada — já aconteceu?</span>
               <button
                 type="button"
-                onClick={handleVisitaRealizada}
+                onClick={() => setShowResultadoVisitaModal("realizada")}
                 className="rounded-lg bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200"
               >
                 ✓ Realizada
               </button>
               <button
                 type="button"
-                onClick={handleVisitaCancelada}
+                onClick={() => setShowResultadoVisitaModal("cancelada")}
                 className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200"
               >
                 ✕ Cancelar

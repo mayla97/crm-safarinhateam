@@ -213,6 +213,11 @@ export function PipelineBoard() {
     }
   };
 
+  // ─── Nota de resultado da visita (Realizada/Cancelada) ─────────────────
+  const [pendingResultado, setPendingResultado] = useState<{ lead: any; tipo: "realizada" | "cancelada" } | null>(null);
+  const [notaResultado, setNotaResultado] = useState("");
+  const [guardandoResultado, setGuardandoResultado] = useState(false);
+
   const marcarVisitaComoConcluida = async (leadId: string) => {
     await supabase
       .from("tarefas")
@@ -222,16 +227,17 @@ export function PipelineBoard() {
       .eq("concluida", false);
   };
 
-  const handleVisitaRealizada = async (lead: any) => {
+  const handleVisitaRealizada = async (lead: any, nota: string) => {
     setUpdatingId(lead.id);
     try {
       const tipo = String(lead.tipo_processo ?? "").trim().toLowerCase();
+      const notaTexto = nota.trim() ? `. Nota da visita: ${nota.trim()}` : "";
       if (tipo === "arrendamento") {
         await supabase.from("leads").update({ etapa_arrendamento: "visita_realizada", updated_at: new Date().toISOString() }).eq("id", lead.id);
-        await addHistorico(lead.id, "etapa", `Etapa de arrendamento alterada: ${ETAPAS_ARR["visita_agendada"]} → ${ETAPAS_ARR["visita_realizada"]}`);
+        await addHistorico(lead.id, "etapa", `Etapa de arrendamento alterada: ${ETAPAS_ARR["visita_agendada"]} → ${ETAPAS_ARR["visita_realizada"]}${notaTexto}`);
       } else {
         await updateLeadEtapa(lead.id, "visita_realizada");
-        await addHistorico(lead.id, "etapa", `Etapa alterada: ${ETAPA_LABELS["visita_agendada"]} → ${ETAPA_LABELS["visita_realizada"]}`);
+        await addHistorico(lead.id, "etapa", `Etapa alterada: ${ETAPA_LABELS["visita_agendada"]} → ${ETAPA_LABELS["visita_realizada"]}${notaTexto}`);
       }
       await marcarVisitaComoConcluida(lead.id);
       await refreshLeads();
@@ -242,16 +248,17 @@ export function PipelineBoard() {
     }
   };
 
-  const handleVisitaCancelada = async (lead: any) => {
+  const handleVisitaCancelada = async (lead: any, nota: string) => {
     setUpdatingId(lead.id);
     try {
       const tipo = String(lead.tipo_processo ?? "").trim().toLowerCase();
+      const notaTexto = nota.trim() ? ` Nota: ${nota.trim()}` : "";
       if (tipo === "arrendamento") {
         await supabase.from("leads").update({ etapa_arrendamento: "em_tratamento", updated_at: new Date().toISOString() }).eq("id", lead.id);
-        await addHistorico(lead.id, "etapa", `Visita cancelada / cliente não compareceu. Etapa de arrendamento voltou de "${ETAPAS_ARR["visita_agendada"]}" para "${ETAPAS_ARR["em_tratamento"]}"`);
+        await addHistorico(lead.id, "etapa", `Visita cancelada / cliente não compareceu. Etapa de arrendamento voltou de "${ETAPAS_ARR["visita_agendada"]}" para "${ETAPAS_ARR["em_tratamento"]}".${notaTexto}`);
       } else {
         await updateLeadEtapa(lead.id, "em_tratamento");
-        await addHistorico(lead.id, "etapa", `Visita cancelada / cliente não compareceu. Etapa voltou de "${ETAPA_LABELS["visita_agendada"]}" para "${ETAPA_LABELS["em_tratamento"]}"`);
+        await addHistorico(lead.id, "etapa", `Visita cancelada / cliente não compareceu. Etapa voltou de "${ETAPA_LABELS["visita_agendada"]}" para "${ETAPA_LABELS["em_tratamento"]}".${notaTexto}`);
       }
       await marcarVisitaComoConcluida(lead.id);
       await refreshLeads();
@@ -259,6 +266,31 @@ export function PipelineBoard() {
       await refreshLeads();
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const abrirResultadoVisita = (lead: any, tipo: "realizada" | "cancelada") => {
+    setPendingResultado({ lead, tipo });
+    setNotaResultado("");
+  };
+
+  const cancelarModalResultado = () => {
+    setPendingResultado(null);
+    setNotaResultado("");
+  };
+
+  const confirmarResultadoVisita = async () => {
+    if (!pendingResultado) return;
+    setGuardandoResultado(true);
+    try {
+      if (pendingResultado.tipo === "realizada") {
+        await handleVisitaRealizada(pendingResultado.lead, notaResultado);
+      } else {
+        await handleVisitaCancelada(pendingResultado.lead, notaResultado);
+      }
+      cancelarModalResultado();
+    } finally {
+      setGuardandoResultado(false);
     }
   };
 
@@ -315,7 +347,7 @@ export function PipelineBoard() {
               <button
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleVisitaRealizada(lead); }}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); abrirResultadoVisita(lead, "realizada"); }}
                 disabled={updatingId === lead.id}
                 className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-100 px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition-colors"
               >
@@ -324,7 +356,7 @@ export function PipelineBoard() {
               <button
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleVisitaCancelada(lead); }}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); abrirResultadoVisita(lead, "cancelada"); }}
                 disabled={updatingId === lead.id}
                 className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 transition-colors"
               >
@@ -427,6 +459,58 @@ export function PipelineBoard() {
                 className="btn-primary flex-1"
               >
                 {guardandoVisita ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingResultado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-1 text-lg font-semibold text-remax-blue-dark">
+              {pendingResultado.tipo === "realizada" ? "Como foi a visita?" : "Visita cancelada"}
+            </h3>
+            <p className="mb-4 text-sm text-brand-muted">
+              {pendingResultado.lead.nome} {pendingResultado.lead.apelido ?? ""}
+            </p>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-brand-muted">
+                Nota (opcional, mas ajuda a lembrar depois)
+              </label>
+              <textarea
+                rows={4}
+                value={notaResultado}
+                onChange={(e) => setNotaResultado(e.target.value)}
+                placeholder={
+                  pendingResultado.tipo === "realizada"
+                    ? "Ex: gostou muito da zona, mas quer algo maior. Não gosta de janelas viradas a rua."
+                    : "Ex: cliente remarcou, não atendeu, desistiu..."
+                }
+                className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-remax-blue focus:outline-none"
+              />
+            </div>
+
+            <p className="mt-3 text-xs text-brand-muted">
+              Fica guardado na timeline do lead. A temperatura não muda sozinha — se quiseres ajustar, faz isso no lead depois de leres a nota.
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={cancelarModalResultado}
+                className="btn-secondary flex-1"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarResultadoVisita}
+                disabled={guardandoResultado}
+                className="btn-primary flex-1"
+              >
+                {guardandoResultado ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar"}
               </button>
             </div>
           </div>
