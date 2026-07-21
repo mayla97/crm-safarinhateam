@@ -155,8 +155,8 @@ export interface DashboardOperacional {
   followupsHoje: number;
   tarefasAtrasadas: number;
   leadsSeContacto: number;
-  tarefasHoje: Array<{ id: string; titulo: string; tipo?: string; lead_id: string; data_limite?: string }>;
-  tarefasAtrasadasLista: Array<{ id: string; titulo: string; tipo?: string; lead_id: string; data_limite?: string }>;
+  tarefasHoje: Array<{ id: string; titulo: string; tipo?: string; descricao?: string; lead_id: string; data_limite?: string }>;
+  tarefasAtrasadasLista: Array<{ id: string; titulo: string; tipo?: string; descricao?: string; lead_id: string; data_limite?: string }>;
 }
 
 export async function fetchDashboardStats(): Promise<DashboardStats> {
@@ -186,8 +186,8 @@ export async function fetchDashboardOperacional(): Promise<DashboardOperacional>
 
   const [leadsRes, tarefasHojeRes, tarefasAtrasadasRes, leadsSeContactoRes, tarefasPendentesRes] = await Promise.all([
     supabase.from("leads").select("etapa, estado_final, estado_lead"),
-    supabase.from("tarefas").select("id, titulo, tipo, lead_id, data_limite, prioridade, concluida, leads(nome, apelido, estado_final, estado_lead)").eq("concluida", false).gte("data_limite", hojeInicio.toISOString()).lte("data_limite", hojeFim.toISOString()),
-    supabase.from("tarefas").select("id, titulo, tipo, lead_id, data_limite, prioridade, concluida, leads(nome, apelido, estado_final, estado_lead)").eq("concluida", false).lt("data_limite", hojeInicio.toISOString()),
+    supabase.from("tarefas").select("id, titulo, tipo, descricao, lead_id, data_limite, prioridade, concluida, leads(nome, apelido, estado_final, estado_lead)").eq("concluida", false).gte("data_limite", hojeInicio.toISOString()).lte("data_limite", hojeFim.toISOString()),
+    supabase.from("tarefas").select("id, titulo, tipo, descricao, lead_id, data_limite, prioridade, concluida, leads(nome, apelido, estado_final, estado_lead)").eq("concluida", false).lt("data_limite", hojeInicio.toISOString()),
     supabase.from("leads").select("id", { count: "exact", head: true }).lt("updated_at", seteDiasAtras.toISOString()).neq("etapa", "escritura_realizada"),
     supabase.from("tarefas").select("id", { count: "exact", head: true }).eq("concluida", false),
   ]);

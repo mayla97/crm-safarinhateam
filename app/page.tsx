@@ -22,6 +22,7 @@ type TarefaResumo = {
   id: string;
   titulo: string;
   tipo?: string;
+  descricao?: string;
   lead_id: string;
   data_limite?: string;
   prioridade?: string;
@@ -282,52 +283,114 @@ export default async function DashboardPage() {
               Sem tarefas pendentes.
             </div>
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {tarefasUnificadas.map((tarefa) => (
-                <li key={tarefa.id} className="px-6 py-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate font-medium text-slate-800">{tarefa.titulo}</p>
-                        {tarefa.atrasada && (
-                          <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
-                            Atrasada
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-brand-muted">
-                        {tarefa.leads?.nome
-                          ? `${tarefa.leads.nome} ${tarefa.leads?.apelido ?? ""}`
-                          : "Sem lead"}{" "}
-                        · {tarefa.tipo ?? "Tarefa"} · {formatHora(tarefa.data_limite)}
-                      </p>
-                    </div>
+            <div>
+              {stats.tarefasAtrasadasLista.length > 0 && (
+                <>
+                  <p className="px-6 pt-4 text-xs font-semibold uppercase tracking-wide text-remax-red">
+                    Atrasadas
+                  </p>
+                  <ul className="divide-y divide-slate-100">
+                    {stats.tarefasAtrasadasLista.map((tarefa) => (
+                      <li key={tarefa.id} className="px-6 py-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-800">{tarefa.titulo}</p>
+                            <p className="mt-1 text-xs text-brand-muted">
+                              {tarefa.leads?.nome
+                                ? `${tarefa.leads.nome} ${tarefa.leads?.apelido ?? ""}`
+                                : "Sem lead"}{" "}
+                              · {tarefa.tipo ?? "Tarefa"} · {formatHora(tarefa.data_limite)}
+                            </p>
+                            {tarefa.descricao && (
+                              <p className="mt-1 text-xs text-slate-500">{tarefa.descricao}</p>
+                            )}
+                          </div>
 
-                    <div className="flex shrink-0 gap-2">
-                      <form action={concluirTarefa}>
-                        <input type="hidden" name="id" value={tarefa.id} />
-                        <button
-                          type="submit"
-                          className="rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition-colors"
-                        >
-                          ✓
-                        </button>
-                      </form>
-                      <Link
-                        href={`/leads/${tarefa.lead_id}`}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                          tarefa.atrasada
-                            ? "bg-remax-red-light text-remax-red"
-                            : "bg-remax-blue-light text-remax-blue"
-                        }`}
-                      >
-                        Abrir
-                      </Link>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                          <div className="flex shrink-0 gap-2">
+                            <form action={concluirTarefa}>
+                              <input type="hidden" name="id" value={tarefa.id} />
+                              <button
+                                type="submit"
+                                className="rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition-colors"
+                              >
+                                ✓
+                              </button>
+                            </form>
+                            <Link
+                              href={`/leads/${tarefa.lead_id}`}
+                              className="rounded-lg bg-remax-red-light px-3 py-1.5 text-xs font-semibold text-remax-red"
+                            >
+                              Abrir
+                            </Link>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
+              {stats.tarefasHoje.length > 0 && (
+                <>
+                  <p className="px-6 pt-4 text-xs font-semibold uppercase tracking-wide text-brand-muted">
+                    Hoje
+                  </p>
+                  <ul className="divide-y divide-slate-100">
+                    {stats.tarefasHoje.map((tarefa) => (
+                      <li key={tarefa.id} className="px-6 py-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="truncate font-medium text-slate-800">{tarefa.titulo}</p>
+                              {tarefa.prioridade && (
+                                <span
+                                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                    tarefa.prioridade === "Alta"
+                                      ? "bg-red-100 text-red-700"
+                                      : tarefa.prioridade === "Média"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-slate-100 text-slate-600"
+                                  }`}
+                                >
+                                  {tarefa.prioridade}
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-xs text-brand-muted">
+                              {tarefa.leads?.nome
+                                ? `${tarefa.leads.nome} ${tarefa.leads?.apelido ?? ""}`
+                                : "Sem lead"}{" "}
+                              · {tarefa.tipo ?? "Tarefa"} · {formatHora(tarefa.data_limite)}
+                            </p>
+                            {tarefa.descricao && (
+                              <p className="mt-1 text-xs text-slate-500">{tarefa.descricao}</p>
+                            )}
+                          </div>
+
+                          <div className="flex shrink-0 gap-2">
+                            <form action={concluirTarefa}>
+                              <input type="hidden" name="id" value={tarefa.id} />
+                              <button
+                                type="submit"
+                                className="rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition-colors"
+                              >
+                                ✓
+                              </button>
+                            </form>
+                            <Link
+                              href={`/leads/${tarefa.lead_id}`}
+                              className="rounded-lg bg-remax-blue-light px-3 py-1.5 text-xs font-semibold text-remax-blue"
+                            >
+                              Abrir
+                            </Link>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
           )}
         </div>
 
