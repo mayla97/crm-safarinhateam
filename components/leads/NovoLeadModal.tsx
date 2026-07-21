@@ -148,7 +148,7 @@ if (encontrados.length > 0 && !ignorarDuplicados) {
         email: form.email.trim() || null,
         tipologia: form.tipologia || null,
         zona_interesse: form.zona_interesse.trim() || null,
-        origem: form.origem || null,
+        origem: form.origem,
         agente_id: form.agente_id || null,
         temperatura: form.temperatura || null,
         orcamento_maximo: orcamento && !isNaN(orcamento) ? orcamento : null,
