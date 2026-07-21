@@ -124,7 +124,7 @@ export function NovoLeadModal({ open, onClose }: NovoLeadModalProps) {
     if (!form.nome.trim()) { setError("O nome é obrigatório."); return; }
 
     if (!form.telemovel.trim() && !form.email.trim()) {
-      setError("Preenche pelo menos o Telemóvel ou o Email — sem nenhum dos dois não há forma de contactar este lead depois.");
+      setError("Telemóvel ou Email são obrigatórios.");
       return;
     }
 
