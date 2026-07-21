@@ -16,14 +16,35 @@ export default function DefinirSenhaPage() {
 
   useEffect(() => {
     const processarLinkDeConvite = async () => {
-      // Formato actual do Supabase para convites/reset: vem na própria URL
-      // visível como ?token_hash=...&type=invite (em vez do antigo
-      // #access_token=... escondido no hash). Precisa de ser trocado
-      // explicitamente por uma sessão com verifyOtp — o getSession()
-      // sozinho não trata este formato.
-      const params = new URLSearchParams(window.location.search);
-      const tokenHash = params.get("token_hash");
-      const type = params.get("type");
+      // Lê o token directamente da URL em vez de confiar na detecção
+      // automática do supabase-js (detectSessionInUrl) — essa detecção
+      // corre de forma assíncrona ao carregar a página, e pedir a sessão
+      // demasiado cedo (getSession()) pode chegar antes do processamento
+      // acabar, mostrando "link inválido" mesmo com um token válido.
+
+      // Formato clássico: #access_token=...&refresh_token=...&type=invite
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const hashError = hashParams.get("error_description");
+
+      if (accessToken && refreshToken) {
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (!setSessionError) {
+          setSessaoValida(true);
+          setChecking(false);
+          return;
+        }
+      }
+
+      // Formato mais recente: ?token_hash=...&type=invite
+      const queryParams = new URLSearchParams(window.location.search);
+      const tokenHash = queryParams.get("token_hash");
+      const type = queryParams.get("type");
 
       if (tokenHash && type) {
         const { error: verifyError } = await supabase.auth.verifyOtp({
@@ -38,8 +59,11 @@ export default function DefinirSenhaPage() {
         }
       }
 
-      // Fallback: formato antigo (#access_token=...), que o supabase-js
-      // já processa sozinho via detectSessionInUrl.
+      if (hashError) {
+        console.error("Erro no link de convite:", hashError);
+      }
+
+      // Último recurso: talvez a sessão já tenha sido criada por outra via.
       const { data } = await supabase.auth.getSession();
       setSessaoValida(!!data.session);
       setChecking(false);
