@@ -122,6 +122,7 @@ export function LeadsTable() {
   const [tipologiaFiltro, setTipologiaFiltro] = useState("todos");
   const [temperaturaFiltro, setTemperaturaFiltro] = useState("todos");
   const [zonaFiltro, setZonaFiltro] = useState("todos");
+  const [agenteFiltro, setAgenteFiltro] = useState("todos");
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [mostrarFiltros, setMostrarFiltros] = useState(true);
   const [importando, setImportando] = useState(false);
@@ -129,6 +130,34 @@ export function LeadsTable() {
   const [semContactoFiltro, setSemContactoFiltro] = useState(searchParams.get("filtro") === "sem_contacto");
   const [seleccionados, setSeleccionados] = useState<string[]>([]);
   const [apagando, setApagando] = useState(false);
+
+  // ─── Scroll horizontal por arrasto na tabela (mesmo padrão do Pipeline) ──
+  const tabelaScrollRef = useRef<HTMLDivElement>(null);
+  const isPanningTabelaRef = useRef(false);
+  const startXTabelaRef = useRef(0);
+  const startScrollTabelaRef = useRef(0);
+  const [isPanningTabela, setIsPanningTabela] = useState(false);
+
+  const handleTabelaMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("a") || target.closest("button") || target.closest("input")) return;
+    isPanningTabelaRef.current = true;
+    setIsPanningTabela(true);
+    startXTabelaRef.current = e.pageX;
+    startScrollTabelaRef.current = tabelaScrollRef.current?.scrollLeft ?? 0;
+  };
+
+  const handleTabelaMouseMove = (e: React.MouseEvent) => {
+    if (!isPanningTabelaRef.current || !tabelaScrollRef.current) return;
+    e.preventDefault();
+    const dx = e.pageX - startXTabelaRef.current;
+    tabelaScrollRef.current.scrollLeft = startScrollTabelaRef.current - dx;
+  };
+
+  const stopPanningTabela = () => {
+    isPanningTabelaRef.current = false;
+    setIsPanningTabela(false);
+  };
   const [dataDeFiltro, setDataDeFiltro] = useState("");
   const [dataAteFiltro, setDataAteFiltro] = useState("");
   const [orcamentoMinFiltro, setOrcamentoMinFiltro] = useState("");
@@ -215,6 +244,7 @@ export function LeadsTable() {
         (etapaFiltro === "todos" || etapaAtual === etapaFiltro) &&
         (origemFiltro === "todos" || lead.origem === origemFiltro) &&
         (zonaFiltro === "todos" || lead.zona_interesse === zonaFiltro) &&
+        (agenteFiltro === "todos" || (lead as any).agente_nome === agenteFiltro) &&
         (tipologiaFiltro === "todos" || lead.tipologia === tipologiaFiltro) &&
         (temperaturaFiltro === "todos" || lead.temperatura === temperaturaFiltro) &&
         passaEstado &&
@@ -229,12 +259,13 @@ export function LeadsTable() {
       const dataB = getEntradaTs(b) ?? 0;
       return dataB - dataA; // mais recentes primeiro
     });
-  }, [leads, search, etapaFiltro, origemFiltro, zonaFiltro, tipologiaFiltro, temperaturaFiltro, estadoFiltro, tipoProcessoFiltro, semContactoFiltro, dataDeFiltro, dataAteFiltro, orcamentoMinFiltro, orcamentoMaxFiltro]);
+  }, [leads, search, etapaFiltro, origemFiltro, zonaFiltro, agenteFiltro, tipologiaFiltro, temperaturaFiltro, estadoFiltro, tipoProcessoFiltro, semContactoFiltro, dataDeFiltro, dataAteFiltro, orcamentoMinFiltro, orcamentoMaxFiltro]);
 
   const zonasDisponiveis = Array.from(new Set(leads.map((lead: any) => lead.zona_interesse).filter(Boolean))).sort();
+  const agentesDisponiveis = Array.from(new Set(leads.map((lead: any) => lead.agente_nome).filter(Boolean))).sort();
 
   const limparFiltros = () => {
-    setSearch(""); setEtapaFiltro("todos"); setOrigemFiltro("todos"); setZonaFiltro("todos");
+    setSearch(""); setEtapaFiltro("todos"); setOrigemFiltro("todos"); setZonaFiltro("todos"); setAgenteFiltro("todos");
     setTipologiaFiltro("todos"); setTemperaturaFiltro("todos"); setEstadoFiltro("todos");
     setTipoProcessoFiltro("todos"); setSemContactoFiltro(false);
     setDataDeFiltro(""); setDataAteFiltro("");
@@ -482,6 +513,10 @@ export function LeadsTable() {
               <option value="todos">Todas zonas</option>
               {zonasDisponiveis.map((zona) => <option key={zona} value={zona}>{zona}</option>)}
             </select>
+            <select value={agenteFiltro} onChange={(e) => setAgenteFiltro(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+              <option value="todos">Todos agentes</option>
+              {agentesDisponiveis.map((nome) => <option key={nome} value={nome}>{nome}</option>)}
+            </select>
             <select value={tipologiaFiltro} onChange={(e) => setTipologiaFiltro(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
               <option value="todos">Todas tipologias</option>
               {TIPOLOGIAS.map((tipologia) => <option key={tipologia} value={tipologia}>{tipologia}</option>)}
@@ -537,7 +572,14 @@ export function LeadsTable() {
         ) : leadsFiltrados.length === 0 ? (
           <div className="py-16 text-center text-brand-muted">Nenhum lead encontrado.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div
+            ref={tabelaScrollRef}
+            className={`overflow-x-auto select-none ${isPanningTabela ? "cursor-grabbing" : "cursor-grab"}`}
+            onMouseDown={handleTabelaMouseDown}
+            onMouseMove={handleTabelaMouseMove}
+            onMouseUp={stopPanningTabela}
+            onMouseLeave={stopPanningTabela}
+          >
             <table className="w-full min-w-[1100px] text-sm table-fixed">
               <colgroup>
                 <col className="w-10" />
