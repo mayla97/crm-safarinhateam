@@ -45,7 +45,7 @@ const initialForm: FormState = {
   email: "",
   tipologia: "T2",
   zona_interesse: "",
-  origem: "Site Remax",
+  origem: "",
   agente_id: "",
   temperatura: "",
   orcamento_maximo: "",
@@ -122,6 +122,11 @@ export function NovoLeadModal({ open, onClose }: NovoLeadModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.nome.trim()) { setError("O nome é obrigatório."); return; }
+
+    if (!form.telemovel.trim() && !form.email.trim()) {
+      setError("Preenche pelo menos o Telemóvel ou o Email — sem nenhum dos dois não há forma de contactar este lead depois.");
+      return;
+    }
 
     // Verificar duplicados antes de submeter
     const encontrados = verificarDuplicados(form.telemovel, form.email);
@@ -237,7 +242,9 @@ if (encontrados.length > 0 && !ignorarDuplicados) {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label htmlFor="telemovel" className={labelClass}>Telemóvel</label>
+                <label htmlFor="telemovel" className={labelClass}>
+                  Telemóvel <span className="font-normal text-brand-muted">(ou Email)</span>
+                </label>
                 <input
                   id="telemovel"
                   type="tel"
@@ -249,7 +256,9 @@ if (encontrados.length > 0 && !ignorarDuplicados) {
                 {verificando && <p className="mt-1 text-xs text-brand-muted">A verificar duplicados...</p>}
               </div>
               <div>
-                <label htmlFor="email" className={labelClass}>Email</label>
+                <label htmlFor="email" className={labelClass}>
+                  Email <span className="font-normal text-brand-muted">(ou Telemóvel)</span>
+                </label>
                 <input
                   id="email"
                   type="email"
@@ -278,6 +287,7 @@ if (encontrados.length > 0 && !ignorarDuplicados) {
               <div>
                 <label htmlFor="origem" className={labelClass}>Origem</label>
                 <select id="origem" value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })} className={inputClass}>
+                  <option value="">— Selecionar —</option>
                   {ORIGENS.map((o) => <option key={o} value={o}>{o}</option>)}
                 </select>
               </div>
