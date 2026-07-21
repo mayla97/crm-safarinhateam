@@ -1002,9 +1002,7 @@ export function LeadDetailForm({ id }: LeadDetailFormProps) {
               />
             </div>
 
-            <p className="mt-3 text-xs text-brand-muted">
-              Fica guardado na timeline do lead. A temperatura não muda sozinha — se quiseres ajustar, faz isso depois de leres a nota.
-            </p>
+         
 
             <div className="mt-6 flex gap-3">
               <button
